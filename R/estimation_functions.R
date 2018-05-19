@@ -70,7 +70,7 @@ composite_est = function(Omega_start, D, G, E, pi1, control=list()) {
 
 
 ## Calculate asymptotic SE for NPMLE
-composite_asymp = function(Omega_start, D, G, E, pi1, control=list()){
+composite_asymp = function(D, G, E, pi1, Omega_start=NULL, control=list()){
   ## Set control parameters
   con = list(nboot=0, trace=0, usehess=FALSE)
   con[(names(control))] = control
@@ -86,6 +86,13 @@ composite_asymp = function(Omega_start, D, G, E, pi1, control=list()){
 
   swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
   reverse_swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
+
+  ## Use Logistic estimates as starting values if they weren't provided
+  if(is.null(Omega_start)){
+    logistic_fit = glm(D~G*E, family=binomial(link='logit'))
+    logistic_est = t(coef(summary(logistic_fit))[,c(1,2)])
+    Omega_start  = logistic_est[1,]
+  }
 
   ## Calculate SPMLE for a given disease rate
   composite_par = composite_est(Omega_start=Omega_start, D=D, G=G, E=E, pi1=pi1, control=con)$par
@@ -158,7 +165,7 @@ SPMLE_fun = function(Omega_start, D, G, E, pi1, H0=NULL, invhessian.lt=NULL, con
 
 
 ## Calculate asymptotic SE for NPMLE
-SPMLE_asymp = function(Omega_start, D, G, E, pi1, swap=FALSE, control=list()){
+SPMLE_asymp = function(D, G, E, pi1, swap=FALSE, Omega_start=NULL, control=list()){
   ## Set control parameters
   con = list(nboot=0, trace=0, usehess=FALSE)
   con[(names(control))] = control
@@ -169,6 +176,13 @@ SPMLE_asymp = function(Omega_start, D, G, E, pi1, swap=FALSE, control=list()){
   ncontrol = n - ncase
   G = as.matrix(G)
   E = as.matrix(E)
+
+  ## Use Logistic estimates as starting values if they weren't provided
+  if(is.null(Omega_start)){
+    logistic_fit = glm(D~G*E, family=binomial(link='logit'))
+    logistic_est = t(coef(summary(logistic_fit))[,c(1,2)])
+    Omega_start  = logistic_est[1,]
+  }
 
   ## If we're swapping G & E, make the change now
   if(swap==TRUE) {
@@ -212,7 +226,7 @@ SPMLE_asymp = function(Omega_start, D, G, E, pi1, swap=FALSE, control=list()){
 }
 
 
-#' Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo, composite SPMLE
+#' Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo
 #'
 #' @param D a binary vector of disease status (1=case, 0=control).
 #' @param G a vector or matrix (if multivariate) containing genetic data. Can be continuous, discrete, or a combination.
@@ -247,8 +261,6 @@ combo_asymp = function(D, G, E, pi1, control=list()){
   SPMLE_G_asy = SPMLE_asymp(Omega_start=Omega_start, D=D, G=G, E=E, pi1=pi1, swap=FALSE, control=con)
   ##### Swap G & E
   SPMLE_E_asy = SPMLE_asymp(Omega_start=Omega_start, D=D, G=G, E=E, pi1=pi1, swap=TRUE, control=con)
-  ##### Composite likelihood estimator
-  composite_SPMLE_asy = composite_asymp(Omega_start=Omega_start, D=D, G=G, E=E, pi1=pi1, control=con)
 
   ## Define matrices
   Omega_all = c(SPMLE_G_asy$par, SPMLE_E_asy$par)
@@ -276,29 +288,21 @@ combo_asymp = function(D, G, E, pi1, control=list()){
   ## Optimum combination
   combo_par = as.vector(Lambda_combo %*% t(X_mat) %*% Lambda_all_inv %*% Omega_all)
 
-  ###### Composite_SPMLE, which maximizes the sum of standard (G) & swapped (E) likelihoods
-  composite_par = composite_SPMLE_asy$par
-  composite_SE = composite_SPMLE_asy$SE
-
   ## All seven estimates
   asy_ests = rbind(logistic_est,
                    SPMLE_G_asy$par, SPMLE_G_asy$SE,
                    SPMLE_E_asy$par, SPMLE_E_asy$SE,
-                   combo_par, combo_SE,
-                   composite_par, composite_SE
-  )
+                   combo_par, combo_SE
+                   )
   rownames(asy_ests) = c("logistic_par", "logistic_SE",
                          "SPMLE_G_par", "SPMLE_G_SE",
                          "SPMLE_E_par", "SPMLE_E_SE",
-                         "combo_par", "combo_SE",
-                         "composite_par", "composite_SE"
-  )
+                         "combo_par", "combo_SE"
+                         )
 
   ## Return estimates
   return(list(ests              = asy_ests,
   						Lambda_all        = Lambda_all,
-  						composite_H_inv   = composite_SPMLE_asy$H_inv,
-  						composite_Sigma   = composite_SPMLE_asy$Sigma,
   						Sigma_GG          = Sigma_GG,
   						Sigma_EE          = Sigma_EE,
   						Sigma_GE          = Sigma_GE,
@@ -361,7 +365,7 @@ combo_boot = function(D, G, E, pi1, SPMLE_G_par, SPMLE_E_par, control=list()) {
   index_control = sample(rep(1:ncontrol, nboot))
   index_case = sample(rep(1:ncase, nboot))
 
-  logistic_boot = SPMLE_G_boot = SPMLE_E_boot = composite_boot = symple_fusion_boot = symple_fusion_asySE_boot = matrix(nrow=nboot, ncol=length_Omega)  # Set empty matrix to store bootstrap results
+  SPMLE_G_boot = SPMLE_E_boot = symple_fusion_boot = matrix(nrow=nboot, ncol=length_Omega)  # Set empty matrix to store bootstrap results
   for(b in 1:nboot) { # bootstrap loop
     if((b %% ceiling(sqrt(nboot))) == 0 && con$trace > -1) {
       updatetxt = paste0("Bootstrap ", b,"\n")
@@ -375,24 +379,12 @@ combo_boot = function(D, G, E, pi1, SPMLE_G_par, SPMLE_E_par, control=list()) {
 
     ## Logistic regression
     logistic_fit = glm(D_boot~G_boot*E_boot, family=binomial(link='logit'))
-    logistic_boot[b,] = coef(logistic_fit)
 
-    ## SPMLE_G and SPMLE_E
-    # if(con$usehess == TRUE) {
-    #   H0_G = neghess(Omega=logistic_boot[b,], D=D_boot, G=G_boot, E=E_boot, pi1=pi1)
-    #   H0_E = neghess(Omega=logistic_boot[b,], D=D_boot, G=E_boot, E=G_boot, pi1=pi1)
-    # } else {
-    #   H0_G = H0_E = NULL
-    # }
-
-   	SPMLE_G_asymp_boot = SPMLE_asymp(Omega_start=logistic_boot[b,], D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=FALSE, control=con)
-   	SPMLE_E_asymp_boot = SPMLE_asymp(Omega_start=logistic_boot[b,], D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=TRUE, control=con)
-
+    ## Calculate both normal & swapped SPMLE with asymptotic SE
+   	SPMLE_G_asymp_boot = SPMLE_asymp(Omega_start=coef(logistic_fit), D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=FALSE, control=con)
+   	SPMLE_E_asymp_boot = SPMLE_asymp(Omega_start=coef(logistic_fit), D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=TRUE, control=con)
    	SPMLE_G_boot[b,] = SPMLE_G_asymp_boot$par
-    SPMLE_E_boot[b,] = SPMLE_E_asymp_boot$par
-
-    ## composite likelihood
-    composite_boot[b,] = composite_est(Omega_start=logistic_boot[b,], D=D_boot, G=G_boot, E=E_boot, pi1=pi1, control=con)$par
+   	SPMLE_E_boot[b,] = SPMLE_E_asymp_boot$par
 
     ### Fusion (combo) asymptotic (to calculate bootstrap SE even when using asymptotic point estimate)
     ## Define matrices
@@ -414,56 +406,23 @@ combo_boot = function(D, G, E, pi1, SPMLE_G_par, SPMLE_E_par, control=list()) {
     Lambda_all_boot = H_all_boot %*% Sigma_all_boot %*% t(H_all_boot)
     Lambda_all_inv_boot = tryCatch(chol2inv(chol(Lambda_all_boot)), error=function(x) solve(Lambda_all_boot))
 
-    ## Covariance matrix of optimum combination
-    Lambda_combo_boot = tryCatch(chol2inv(chol(t(X_mat) %*% Lambda_all_inv_boot %*% X_mat)), error=function(x) solve(t(X_mat) %*% Lambda_all_inv_boot %*% X_mat))
-    symple_fusion_asySE_boot[b,] = sqrt(diag(Lambda_combo_boot)/n)
-
     ## Optimum combination
+    Lambda_combo_boot = tryCatch(chol2inv(chol(t(X_mat) %*% Lambda_all_inv_boot %*% X_mat)), error=function(x) solve(t(X_mat) %*% Lambda_all_inv_boot %*% X_mat))
     symple_fusion_boot[b,] = as.vector(Lambda_combo_boot %*% t(X_mat) %*% Lambda_all_inv_boot %*% Omega_all_boot)
 
   }  ## End bootstrap loop
 
   ### Calculate bootstrap SE
-  logistic_boot_SE = apply(logistic_boot, 2, FUN=function(x) sd(x, na.rm = TRUE))
-  SPMLE_G_boot_SE = apply(SPMLE_G_boot, 2, FUN=function(x) sd(x, na.rm = TRUE))
-  SPMLE_E_boot_SE = apply(SPMLE_E_boot, 2, FUN=function(x) sd(x, na.rm = TRUE))
-  simple_boot_SE = apply((SPMLE_G_boot+SPMLE_E_boot)/2, 2, FUN=function(x) sd(x, na.rm = TRUE))
-  composite_boot_SE = apply(composite_boot, 2, FUN=function(x) sd(x, na.rm = TRUE))
   symple_fusion_asymp_boot_SE = apply(symple_fusion_boot, 2, FUN=function(x) sd(x, na.rm = TRUE))
 
   ### Calculate bootstrap combo estimator
   Omega_all = c(SPMLE_G_par, SPMLE_E_par)
   X_mat = rbind(diag(length_Omega), diag(length_Omega))
 
-  ## Lambda (bootstrap covariance) matrix
-  Lambda_all_boot = (n-1) * cov(cbind(SPMLE_G_boot, SPMLE_E_boot), use="na.or.complete")
-  Lambda_all_boot_inv = tryCatch(chol2inv(chol(Lambda_all_boot)), error=function(x) solve(Lambda_all_boot))
-
-  ## Covariance matrix of optimum combination
-  Lambda_combo_boot = tryCatch(chol2inv(chol(t(X_mat) %*% Lambda_all_boot_inv %*% X_mat)), error=function(x) solve(t(X_mat) %*% Lambda_all_boot_inv %*% X_mat))
-  combo_boot_SE = sqrt(diag(Lambda_combo_boot)/n)
-
-  ## Optimum combination
-  combo_boot_par = as.vector(Lambda_combo_boot %*% t(X_mat) %*% Lambda_all_boot_inv %*% Omega_all)
-
   ## Return estimates and Lambda matrix
-  boot_ests = rbind(logistic_boot_SE,
-                    SPMLE_G_boot_SE,
-                    SPMLE_E_boot_SE,
-                    simple_boot_SE,
-                    composite_boot_SE,
-  									symple_fusion_asymp_boot_SE,
-                    combo_boot_par, combo_boot_SE
-  )
-
-  return(list(ests = boot_ests,
-  						Lambda_all = Lambda_all_boot,
-  						Lambda_combo_boot = Lambda_combo_boot,
-  						logistic_boot = logistic_boot,
+  return(list(boot_SE = symple_fusion_asymp_boot_SE,
   						SPMLE_G_boot = SPMLE_G_boot,
   						SPMLE_E_boot = SPMLE_E_boot,
-  						composite_boot = composite_boot,
-  						symple_fusion_boot = symple_fusion_boot,
-  						symple_fusion_asySE_boot = symple_fusion_asySE_boot
+  						symple_fusion_boot = symple_fusion_boot
   						))
 }

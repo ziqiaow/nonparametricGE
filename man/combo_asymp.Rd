@@ -2,7 +2,7 @@
 % Please edit documentation in R/estimation_functions.R
 \name{combo_asymp}
 \alias{combo_asymp}
-\title{Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo, composite SPMLE}
+\title{Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo}
 \usage{
 combo_asymp(D, G, E, pi1, control = list())
 }
@@ -24,7 +24,7 @@ combo_asymp(D, G, E, pi1, control = list())
 A list with a matrix of estimates and SEs and a bunch of other stuff
 }
 \description{
-Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo, composite SPMLE
+Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo
 }
 \seealso{
 \code{\link{simulate_complex}} to simulate data
