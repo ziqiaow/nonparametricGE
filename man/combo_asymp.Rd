@@ -2,10 +2,9 @@
 % Please edit documentation in R/estimation_functions.R
 \name{combo_asymp}
 \alias{combo_asymp}
-\title{Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo, Simple Average, Weighted Average, composite SPMLE}
+\title{Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo, composite SPMLE}
 \usage{
-combo_asymp(D, G, E, pi1, control = list(), current_sim = NULL, logpath,
-  filename)
+combo_asymp(D, G, E, pi1, control = list())
 }
 \arguments{
 \item{D}{a binary vector of disease status (1=case, 0=control).}
@@ -19,19 +18,13 @@ combo_asymp(D, G, E, pi1, control = list(), current_sim = NULL, logpath,
 \item{control}{a list of control parameters.
 \code{nboot} number of bootstraps.  Default \code{0}.
 \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
-\code{usehess} logical: precondition optimization with the hessian.  Default \code{TRUE}.}
-
-\item{current_sim}{Name or number of current simulation.  Default \code{NULL}.}
-
-\item{logpath}{paths for saving files}
-
-\item{filename}{file name for log and simulations}
+\code{usehess} logical: precondition optimization with the hessian.  Default \code{FALSE}.}
 }
 \value{
 A list with a matrix of estimates and SEs and a bunch of other stuff
 }
 \description{
-Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo, Simple Average, Weighted Average, composite SPMLE
+Calculate seven estimators with asymptotic SEs: logistic, SPMLE, swap, Optimal Combo, composite SPMLE
 }
 \seealso{
 \code{\link{simulate_complex}} to simulate data

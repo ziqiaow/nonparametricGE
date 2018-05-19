@@ -4,9 +4,9 @@
 \alias{simfun}
 \title{Simulate data and run the analysis}
 \usage{
-simfun(X, filename, simpath, logpath, control = list(), pi1, ncase, ncontrol,
-  beta0, betaG_SNP, betaG_normPRS, betaG_gammaPRS, betaG_bimodalPRS, betaE_bin,
-  betaE_norm, betaGE_SNP_bin, betaGE_normPRS_bin, betaGE_gammaPRS_bin,
+simfun(X, control = list(), pi1, ncase, ncontrol, beta0, betaG_SNP,
+  betaG_normPRS, betaG_gammaPRS, betaG_bimodalPRS, betaE_bin, betaE_norm,
+  betaGE_SNP_bin, betaGE_normPRS_bin, betaGE_gammaPRS_bin,
   betaGE_bimodalPRS_bin, betaGE_SNP_norm, betaGE_normPRS_norm,
   betaGE_gammaPRS_norm, betaGE_bimodalPRS_norm, MAF, SNP_cor, G_normPRS_cor,
   E_bin_freq, E_norm_cor, regress_E_bin_on_G_SNP, regress_E_bin_on_G_normPRS,
@@ -16,10 +16,6 @@ simfun(X, filename, simpath, logpath, control = list(), pi1, ncase, ncontrol,
 }
 \arguments{
 \item{X}{simulation number}
-
-\item{filename}{file name for log and simulations}
-
-\item{simpath, logpath}{paths for saving files}
 
 \item{control}{a list of control parameters.
 \code{nboot} number of bootstraps.  Default \code{0}.

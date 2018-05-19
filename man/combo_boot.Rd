@@ -4,8 +4,7 @@
 \alias{combo_boot}
 \title{Function to calculate bootstrapped SE for SPMLE_G & SPMLE_E estimates, as well as bootstrapped Combo estimate}
 \usage{
-combo_boot(D, G, E, pi1, SPMLE_G_par, SPMLE_E_par, control = list(),
-  current_sim = NULL, logpath, filename)
+combo_boot(D, G, E, pi1, SPMLE_G_par, SPMLE_E_par, control = list())
 }
 \arguments{
 \item{D}{a binary vector of disease status (1=case, 0=control).}
@@ -21,13 +20,7 @@ combo_boot(D, G, E, pi1, SPMLE_G_par, SPMLE_E_par, control = list(),
 \item{control}{a list of control parameters.
 \code{nboot} number of bootstraps.  Default \code{0}.
 \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
-\code{usehess} logical: precondition optimization with the hessian.  Default \code{TRUE}.}
-
-\item{current_sim}{Name or number of current simulation.  Default \code{NULL}.}
-
-\item{logpath}{paths for saving files}
-
-\item{filename}{file name for log and simulations}
+\code{usehess} logical: precondition optimization with the hessian.  Default \code{FALSE}.}
 }
 \value{
 A list with a matrix of estimates and SEs and a bunch of other stuff

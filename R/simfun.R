@@ -1,8 +1,6 @@
 #' Simulate data and run the analysis
 #'
 #' @param X simulation number
-#' @param filename file name for log and simulations
-#' @param simpath,logpath paths for saving files
 #' @param control a list of control parameters.
 #'     \code{nboot} number of bootstraps.  Default \code{0}.
 #'     \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
@@ -23,7 +21,7 @@
 #'
 #' @return A named row vector of estimates and SEs
 #' @export
-simfun = function(X, filename, simpath, logpath, control=list(),
+simfun = function(X, control=list(),
                   pi1, ncase, ncontrol, beta0,
                   betaG_SNP, betaG_normPRS, betaG_gammaPRS, betaG_bimodalPRS, betaE_bin, betaE_norm,
                   betaGE_SNP_bin, betaGE_normPRS_bin, betaGE_gammaPRS_bin, betaGE_bimodalPRS_bin,
@@ -63,10 +61,10 @@ simfun = function(X, filename, simpath, logpath, control=list(),
   )
 
   ## Asymptotic estimates
-  asymp_ests = combo_asymp(D=dat$D, G=dat$G, E=dat$E, pi1=pi1, control=con, current_sim=X, logpath=logpath, filename=filename)
+  asymp_ests = combo_asymp(D=dat$D, G=dat$G, E=dat$E, pi1=pi1, control=con)
 
   ## Bootstrap estimates
-  if(con$nboot>0) boot_ests = combo_boot(D=dat$D, G=dat$G, E=dat$E, pi1=pi1, SPMLE_G_par=asymp_ests$ests['SPMLE_G_par',], SPMLE_E_par=asymp_ests$ests['SPMLE_E_par',], control=con, current_sim=X, logpath=logpath, filename=filename)
+  if(con$nboot>0) boot_ests = combo_boot(D=dat$D, G=dat$G, E=dat$E, pi1=pi1, SPMLE_G_par=asymp_ests$ests['SPMLE_G_par',], SPMLE_E_par=asymp_ests$ests['SPMLE_E_par',], control=con)
 
   ## All estimates in a single data frame
   if(con$nboot>0) {
@@ -117,23 +115,6 @@ simfun = function(X, filename, simpath, logpath, control=list(),
   all_names=paste(name_mat[,2], name_mat[,1], sep="_")
   names(onerow) = all_names
 
-  # Write final estimates for this simulation to a file
-  write.csv(all_estimates, file=paste0(simpath, filename, " sim", X, ".csv"))
-
-  # Write estimates of Lambda_all for this simulation to a file
-  if(con$nboot>0) {
-    # write.table(rbind(boot_ests$Lambda_all, asymp_ests$Lambda_all, cbind(asymp_ests$composite_H_inv, asymp_ests$composite_Sigma)),
-    #             file=paste0(simpath, filename, " Lambda", X, ".csv"),
-    #             row.names=c(rep("boot", 2*ncol(all_estimates)),rep("asy", 2*ncol(all_estimates)),rep("composite_H_inv_&_Sigma", ncol(all_estimates))),
-    #             col.names=FALSE, qmethod='double', sep=',')
-  	save(asymp_ests, boot_ests, RanSeed, file=paste0(simpath, filename, " asyboot", X, ".Rdata"))
-  } else {
-    # write.table(rbind(asymp_ests$Lambda_all, cbind(asymp_ests$composite_H_inv, asymp_ests$composite_Sigma)),
-    #             file=paste0(simpath, filename, " Lambda", X, ".csv"),
-    #             row.names=c(rep("asy", 2*ncol(all_estimates)),rep("composite_H_inv_&_Sigma", ncol(all_estimates))),
-    #             col.names=FALSE, qmethod='double', sep=',')
-  	save(asymp_ests, RanSeed, file=paste0(simpath, filename, " asy", X, ".Rdata"))
-  }
   # Return the estimates as a single vector
   return(onerow)
 }
