@@ -62,24 +62,41 @@ fit <- eval(call(if (is.function(method)) "method" else method,
 ################################################################################ Adding data to spmle
 ## Calculate asymptotic SE for SPMLE
 spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
-  formula = formula(D~G*E)
+  ## Store the function call
   cl = match.call()
 
-  if (missing(data)) {
-    # data = environment(formula)
-    data = globalenv()
+  ## Get argument names for D, G, and E
+  Dname = substitute(D)
+  Gname = substitute(G)
+  Ename = substitute(E)
+
+  ## Store the formula with user-provided variable names.  For consistency with estimators that
+  ## accept formulas (like lm), set the formula environment as if it had been an argument.
+  formula = formula(paste(as.character(as.expression(Dname)), "~", as.character(as.expression(Gname)), "*", as.character(as.expression(Ename))))
+  attr(formula, ".Environment") = parent.env(environment(formula))
+
+  ## Evaluate D, G, and E in data, if appropriate
+  if(!missing(data)) {
+    if(class(data)=="matrix") {data = as.data.frame(data)}
+    D = as.matrix(with(data=data, eval(Dname)))
+    G = as.matrix(with(data=data, eval(Gname)))
+    E = as.matrix(with(data=data, eval(Ename)))
+  } else {  # if no data.frame was supplied, set data to the environment of formula (typically globalenv())
+    data = environment(formula)
   }
 
-  mf <- match.call(expand.dots = FALSE)
-  m <- match(c("formula", "data", "subset", "weights", "na.action",
-               "etastart", "mustart", "offset"), names(mf), 0L)
-  mf <- mf[c(1L, m)]
-  mf$drop.unused.levels <- TRUE
-  mf[[1L]] <- quote(stats::model.frame)
-  # mf <- eval(mf, parent.frame())
+  ## Save model frame
+  model = model.frame(formula=formula, data=data)
 
-  return(mf)
-}
+  ## If starting values weren't provided, use logistic regression estimates
+  if(missing(startvals)) {
+    Omega_start = coef(glm(formula, family=binomial(link='logit'), data=data))
+  } else {
+    Omega_start = startvals
+  }
+
+  ## If user-provided startval lacked names, add them
+  if(is.null(names(Omega_start))) {names(Omega_start) = colnames(model.matrix(formula, model[1,]))}
 
   ## Set control parameters
   con = list(trace=0, use_hess=FALSE, max_grad_tol=0.001, num_retries=2)
@@ -91,13 +108,6 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   ncontrol = n - ncase
   G = as.matrix(G)
   E = as.matrix(E)
-
-  ## Use Logistic estimates as starting values if they weren't provided
-  if(missing(startvals)) {
-    Omega_start = coef(glm(D~G*E, family=binomial(link='logit')))
-  } else {
-    Omega_start = startvals
-  }
 
   ## If we're swapping G & E, make the change now
   if(swap==TRUE) {
@@ -125,7 +135,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   Lambda = H_inv %*% Sigma %*% t(H_inv)  # covar matrix of sqrt(n) * OmegaHat
   SE_asy = sqrt(diag(Lambda)/n)
 
-  ## If we're swapping G & E, change back now
+  ## Compile results into a list.  If we're swapping G & E, change back now
   spmle_est = list(par   = spmle_max$par[swap_order],
                    SE    = SE_asy[swap_order],
                    cov   = Lambda[swap_order,swap_order]/n,
@@ -134,8 +144,12 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
                    zeta0 = hess_zeta$zeta0[, swap_order],
                    zeta1 = hess_zeta$zeta1[, swap_order],
                    ucminf = spmle_max,
-                   call  = cl)
-  class(spmle_est) = "spmle"
+                   call  = cl,
+                   formula = formula,
+                   data = data,
+                   model = model)
+
+  class(spmle_est) = c("spmle", "glm", "lm")
 
   return(spmle_est)
 }
@@ -181,7 +195,9 @@ G[1,] = E[1,] = 10
 set.seed(11)
 x=rexp(9, .01)
 y=rpois(n=9, x)^2
-z=glm(y~x, family=quasipoisson)
+xydat = data.frame(xpart=x, ypart=y, silly=0)
+z=glm(ypart~xpart, family=quasipoisson, data=xydat)
+z=glm(ypart~exp(xpart), family=quasipoisson, data=xydat)
 summary(z)
 ################################################################################ glm methods
 > methods(class=glm)
