@@ -1,5 +1,30 @@
 
-scale_vec = 1/c(1, apply(model.matrix(~0+G*E), 2, sd))
+################################################################################ loop to rerun optimization if convergence is not met
+
+if(!is.finite(SPMLE$info[1]) | SPMLE$info[1]>con$max_grad_tol) {
+  ## Scale starting values by 1/SD
+  scale_vec = 1/c(1, apply(model.matrix(~0+G*E), 2, sd))
+
+  ## Loop through different starting values
+  for(j in seq_len(con$num_retries)) {
+    if(con$trace>-1) cat("UCMINF retry", j, "of", con$num_retries, "\n")
+
+    ## If failure happened when preconditioning with the hessian, try without (same start values the first time)
+    if(!is.null(ucminf_con$invhessian.lt)){
+      ucminf_con$invhessian.lt = NULL
+      SPMLE = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
+    } else {
+      SPMLE = ucminf::ucminf(par=rnorm(n=length(Omega_start), sd=scale_vec), fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
+    }
+
+    ## Break out of the loop once we have convergence
+    if(is.finite(SPMLE$info[1]) & SPMLE$info[1]<con$max_grad_tol) break
+  }
+
+  ## Test again: if still no convergance, throw an error
+  if(!is.finite(SPMLE$info[1]) | SPMLE$info[1]>con$max_grad_tol) stop("UCMINF failed to converge")
+}
+
 
 ################################################################################ test optimization algorithms
 
@@ -15,17 +40,22 @@ system.time(print(nlr<-nloptr(opts=list(algorithm="NLOPT_LD_LBFGS", xtol_rel=1e-
 nlr$objective - uc$value
 # 598.2329
 # -1.130845 -0.006988747 0.2600060 0.4970546 -0.02545356 0.02253449 0.9529137 0.37286867 -0.03275638 -0.3224604 0.4583135 -0.2144142
-NLOPT_LD_SLSQP, 3.8
-NLOPT_LD_LBFGS, 2.3
-NLOPT_LD_VAR1, 4.9
-NLOPT_LD_VAR2, 4.9
-NLOPT_LD_TNEWTON, 3.8
-NLOPT_LD_TNEWTON_RESTART, 5
-NLOPT_LD_TNEWTON_PRECOND, 3.6
-NLOPT_LD_TNEWTON_PRECOND_RESTART, 3.2
-NLOPT_LD_MMA, 7
+# NLOPT_LD_SLSQP, 3.8
+# NLOPT_LD_LBFGS, 2.3
+# NLOPT_LD_VAR1, 4.9
+# NLOPT_LD_VAR2, 4.9
+# NLOPT_LD_TNEWTON, 3.8
+# NLOPT_LD_TNEWTON_RESTART, 5
+# NLOPT_LD_TNEWTON_PRECOND, 3.6
+# NLOPT_LD_TNEWTON_PRECOND_RESTART, 3.2
+# NLOPT_LD_MMA, 7 (didn't converge)
 
 ################################################################################ ucminf control()
+
+ucminf_con_names = c("trace", "grtol", "xtol", "stepmax", "maxeval", "grad", "gradstep", "invhessian.lt")
+ucminf_con = con[names(con) %in% ucminf_con_names]
+
+
 ucminf_con = list(trace=0, grtol=1e-06, xtol=1e-12, stepmax=1, maxeval=500,
                   grad="forward", gradstep=c(1e-06, 1e-08), invhessian.lt=NULL)
 ucminf_con[names(ucminf_con) %in% names(con)] = con[names(con) %in% names(ucminf_con)]

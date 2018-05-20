@@ -11,61 +11,62 @@ lik_fn = function(Omega, D, G, E, pi1) {
   return(lik_grad[[1]])
 }
 
+
 ## Report the gradient
 grad_fn = function(Omega, D, G, E, pi1) return(get(x="grad_val", pos=parent.frame())) # return the previously stored gradient
 
+
+## When ucminf works, it works brilliantly (typically more than twice as fast
+## as the next-fastest algorithm).  But it has a nasty habit of declaring
+## convergence before actually converging.
+## max_grad_tol = maximum allowable gradient
+## num_retries = number of times to retry optimization
+##
+## Omega_start is the starting value for optimization and invhessian.lt is the lower triangle of the inverse hessian
+
 ## Calculate the SPMLE (optionally precondition with hessian)
-SPMLE_fun = function(Omega_start, D, G, E, pi1, control=list()) {
+maximize_SPMLE = function(Omega_start, D, G, E, pi1, control=list()) {
   ## Set control parameters for SPMLE estimation
-  con = list(trace=0, max_grad_tol=0.001, num_retries=21)
+  con = list(trace=0, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
 
-  ## Set control parameters for ucminf (using values from con where appropriate)
-  ucminf_con = list(trace=0, grtol=1e-06, xtol=1e-12, stepmax=1, maxeval=500,
-                    grad="forward", gradstep=c(1e-06, 1e-08), invhessian.lt=NULL)
-  ucminf_con[names(ucminf_con) %in% names(con)] = con[names(con) %in% names(ucminf_con)]
+  ## Set control parameters for ucminf using values from con where appropriate
+  ucminf_con = con[names(con) %in% c("trace", "grtol", "xtol", "stepmax", "maxeval", "grad", "gradstep", "invhessian.lt")]
 
-  ## Optimize with ucminf.  Here Omega_start is the starting value for optimization and invhessian.lt is the lower triangle of the inverse hessian
-  SPMLE = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
+  ## Optimize with ucminf
+  SPMLE_max = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
 
-  ## When ucminf works, it works brilliantly (typically more than twice as fast
-  ## as the next-fastest algorithm).  But it has a nasty habit of declaring
-  ## convergence before actually converging.  Here we check for convergance
-  ## and rerun optimization if necessary.
-  ##
-  ## max_grad_tol = maximum allowable gradient
-  ## num_retries = number of times to retry optimization
-  if(!is.finite(SPMLE$info[1]) | SPMLE$info[1]>con$max_grad_tol) {
-    num_retries = max(ceiling(abs(num_retries)), 2)  # at least 2 retries
-    retry_counter = 1                                # set counter to 1
+  ## Check for convergance and rerun optimization if necessary
+  if(!is.finite(SPMLE_max$info[1]) | SPMLE_max$info[1]>con$max_grad_tol) {
+    ## Scale starting values by 1/SD
+    scale_vec = 1/c(1, apply(model.matrix(~0+G*E), 2, sd))
 
-    ## if failure happened when preconditioning with the hessian, try without
-    if(!is.null(ucminf_con$invhessian.lt)){
-      if(con$trace>-1) cat("UCMINF retry without hessian preconditioning\n")
-      retry_counter = retry_counter + 1
-      ucminf_con$invhessian.lt = NULL
-      SPMLE = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
-      if(is.finite(SPMLE$info[1]) & SPMLE$info[1]<con$max_grad_tol) break  # stop once we have convergence
+    ## Loop through different starting values
+    for(j in seq_len(con$num_retries)) {
+      if(con$trace>-1) {cat("UCMINF retry", j, "of", con$num_retries, "\n")}
+
+      ## If failure happened when preconditioning with the hessian, try without (same start values the first time)
+      if(!is.null(ucminf_con$invhessian.lt)) {
+        ucminf_con$invhessian.lt = NULL
+        SPMLE_max = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
+      } else {
+        SPMLE_max = ucminf::ucminf(par=rnorm(n=length(Omega_start), sd=scale_vec), fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
+      }
+
+      ## Break out of the loop once we have convergence
+      if(is.finite(SPMLE_max$info[1]) & SPMLE_max$info[1]<con$max_grad_tol) {break}
     }
-    startvals = cbind(rep(0,length(Omega_start)), # create a matrix of starting values
-                      matrix(runif(length(Omega_start)*ceiling((con$num_retries-1)/4), min=-1, max=1), nrow=length(Omega_start)) + Omega_start,
-                      matrix(rnorm(length(Omega_start)*ceiling((con$num_retries-1)/4)), nrow=length(Omega_start)),
-                      matrix(rt(length(Omega_start)*ceiling((con$num_retries-1)/2), df=2), nrow=length(Omega_start)))
-    for(j in 1:ncol(startvals)) { # retry optimization
-      updatetxt = paste0("UCMINF retry ",j,"\n")
-      if(con$trace>-1) cat(updatetxt)
-      SPMLE = ucminf::ucminf(par=startvals[,j], fn=lik_fn, gr=grad_fn, control=list(trace=con$trace), D=D, G=G, E=E, pi1=pi1)
-      if(is.finite(SPMLE$info[1]) & SPMLE$info[1]<con$max_grad_tol) break  # stop once we have convergence
-      if(j == ncol(startvals)) stop("UCMINF failed to converge")
-    }  # end of j loop
+
+    ## Test again: if still no convergance, throw an error
+    if(!is.finite(SPMLE_max$info[1]) | SPMLE_max$info[1]>con$max_grad_tol) {stop("UCMINF failed to converge")}
   }
-  return(SPMLE$par)
+  return(SPMLE_max)
 }
 
 ## Calculate asymptotic SE for SPMLE
 SPMLE_asymp = function(D, G, E, pi1, control=list(), swap=FALSE, Omega_start=NULL){
   ## Set control parameters
-  con = list(trace=0, usehess=FALSE)
+  con = list(trace=0, use_hess=FALSE, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
 
   ## Sizes of arrays
@@ -76,7 +77,7 @@ SPMLE_asymp = function(D, G, E, pi1, control=list(), swap=FALSE, Omega_start=NUL
   E = as.matrix(E)
 
   ## Use Logistic estimates as starting values if they weren't provided
-  if(is.null(Omega_start)) Omega_start = coef(glm(D~G*E, family=binomial(link='logit')))
+  if(is.null(Omega_start)) {Omega_start = coef(glm(D~G*E, family=binomial(link='logit')))}
 
   ## If we're swapping G & E, make the change now
   if(swap==TRUE) {
@@ -91,32 +92,32 @@ SPMLE_asymp = function(D, G, E, pi1, control=list(), swap=FALSE, Omega_start=NUL
     swap_order = reverse_swap_order = seq_along(Omega_start)
   }
 
-  ## Calculate SPMLE for a given disease rate
-  if(con$usehess==TRUE) {
-    con$invhessian.lt = solve(neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1))[lower.tri(diag(length(Omega_start)),diag=TRUE)]
-  } else {
-    con$invhessian.lt = NULL
-  }
+  ## Precondition with hessian if requested
+  if(con$use_hess==TRUE) {con$invhessian.lt = solve(neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1))[lower.tri(diag(length(Omega_start)),diag=TRUE)]}
 
-  SPMLE = SPMLE_fun(Omega_start=Omega_start[reverse_swap_order], D=D, G=G, E=E, pi1=pi1, H0=H0, control=con)
+  ## Calculate SPMLE for a given disease rate
+  SPMLE_max = maximize_SPMLE(Omega_start=Omega_start[reverse_swap_order], D=D, G=G, E=E, pi1=pi1, H0=H0, control=con)
 
   ## Asymptotic SE for known disease rate
-  hess_zeta = hesszeta(Omega=SPMLE, D=D, G=G, E=E, pi1=pi1)
+  hess_zeta = hesszeta(Omega=SPMLE_max$par, D=D, G=G, E=E, pi1=pi1)
   Sigma = ((ncontrol-1)*cov(hess_zeta$zeta0) + (ncase-1)*cov(hess_zeta$zeta1))/n  # (ncontrol-1) to correct denominator because cov uses the "sample covariance matrix" denominator of n-1
   H_inv = -n*solve(hess_zeta$hessian)    # = (-hessian/n)^-1 = (Gamma_1 - Gamma_2)^-1
   Lambda = H_inv %*% Sigma %*% t(H_inv)  # covar matrix of sqrt(n) * OmegaHat
   SE_asy = sqrt(diag(Lambda)/n)
 
   ## If we're swapping G & E, change back now
-  return(list(par   = SPMLE[swap_order],
+  SPMLE_est = list(par   = SPMLE_max$par[swap_order],
               SE    = SE_asy[swap_order],
               cov   = Lambda[swap_order,swap_order],
               H_inv = H_inv[swap_order,swap_order],
               Sigma = Sigma[swap_order,swap_order],
               zeta0 = hess_zeta$zeta0[, swap_order],
               zeta1 = hess_zeta$zeta1[, swap_order],
-  						H     = hess_zeta$hessian[swap_order,swap_order])
-  )
+  						H     = hess_zeta$hessian[swap_order,swap_order],
+  						ucminf = SPMLE_max)
+  class(SPMLE_est) = "spmle"
+
+  return(SPMLE_est)
 }
 
 
@@ -131,13 +132,13 @@ SPMLE_asymp = function(D, G, E, pi1, control=list(), swap=FALSE, Omega_start=NUL
 #' @param control a list of control parameters.
 #'     \code{nboot} number of bootstraps.  Default \code{0}.
 #'     \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
-#'     \code{usehess} logical: precondition optimization with the hessian.  Default \code{FALSE}.
+#'     \code{use_hess} logical: precondition optimization with the hessian.  Default \code{FALSE}.
 #' @return A list with a matrix of estimates and SEs and a bunch of other stuff
 #' @seealso \code{\link{simulate_complex}} to simulate data
 #' @export
 combo_asymp = function(D, G, E, pi1, control=list()){
   ## Set control parameters
-  con = list(nboot=0, trace=0, usehess=FALSE)
+  con = list(nboot=0, trace=0, use_hess=FALSE)
   con[(names(control))] = control
 
   ## Sizes of arrays
@@ -223,14 +224,14 @@ combo_asymp = function(D, G, E, pi1, control=list()){
 #' @param control a list of control parameters.
 #'     \code{nboot} number of bootstraps.  Default \code{0}.
 #'     \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
-#'     \code{usehess} logical: precondition optimization with the hessian.  Default \code{FALSE}.
+#'     \code{use_hess} logical: precondition optimization with the hessian.  Default \code{FALSE}.
 #' @param SPMLE_G_par,SPMLE_E_par Parameter estimates generated from \code{\link{combo_asymp}}
 #' @return A list with a matrix of estimates and SEs and a bunch of other stuff
 #' @seealso \code{\link{simulate_complex}} to simulate data
 #' @export
 combo_boot = function(D, G, E, pi1, SPMLE_G_par, SPMLE_E_par, control=list()) {
   ## Set control parameters
-  con = list(nboot=0, trace=0, usehess=FALSE)
+  con = list(nboot=0, trace=0, use_hess=FALSE)
   con[(names(control))] = control
 
   ## Correct too-small bootstrap sample
@@ -343,7 +344,7 @@ composite_lik = function(Omega, D, G, E, pi1) {
 ## Calculate the composite SPMLE (maximize sum of normal SPMLE and swapped likelihoods)
 composite_est = function(Omega_start, D, G, E, pi1, control=list()) {
   ## Set control parameters
-  con = list(nboot=0, trace=0, usehess=FALSE, max_grad_tol=0.001, num_retries=21)
+  con = list(nboot=0, trace=0, use_hess=FALSE, max_grad_tol=0.001, num_retries=21)
   con[(names(control))] = control
 
   nG = NCOL(G)
@@ -351,7 +352,7 @@ composite_est = function(Omega_start, D, G, E, pi1, control=list()) {
   swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
   reverse_swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
 
-  if(con$usehess==TRUE) {
+  if(con$use_hess==TRUE) {
     ## Calculate hessian
     hg = neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1)
     he = neghess(Omega=Omega_start[reverse_swap_order], D=D, G=E, E=G, pi1=pi1)
@@ -387,7 +388,7 @@ composite_est = function(Omega_start, D, G, E, pi1, control=list()) {
 ## Calculate asymptotic SE for NPMLE
 composite_asymp = function(D, G, E, pi1, Omega_start=NULL, control=list()){
   ## Set control parameters
-  con = list(nboot=0, trace=0, usehess=FALSE)
+  con = list(nboot=0, trace=0, use_hess=FALSE)
   con[(names(control))] = control
 
   ## Sizes of arrays
