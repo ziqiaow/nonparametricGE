@@ -149,8 +149,8 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
                    data = data,
                    model = model)
 
-  class(spmle_est) = c("spmle", "glm", "lm")
-
+  ## Return an object of class spmle, which inherits from glm and lm
+  class(spmle_est) = c("spmle")#, "glm", "lm")
   return(spmle_est)
 }
 
