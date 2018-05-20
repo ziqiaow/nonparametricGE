@@ -58,13 +58,13 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
     }
 
     ## Test again: if still no convergance, throw an error
-    if(!is.finite(spmle_max$info[1]) | spmle_max$info[1]>con$max_grad_tol) {stop("ucminf failed to converge")}
+    if(!is.finite(spmle_max$info[1]) | spmle_max$info[1]>con$max_grad_tol) {stop("ucminf failed to converge. Try increasing control$num_retries or rescaling G and E.")}
   }
   return(spmle_max)
 }
 
 ## Calculate asymptotic SE for SPMLE
-spmle = function(D, G, E, pi1, control=list(), swap=FALSE, Omega_start=NULL){
+spmle = function(D, G, E, pi1, control=list(), swap=FALSE, startvals){
   cl = match.call()
 
   ## Set control parameters
@@ -79,7 +79,11 @@ spmle = function(D, G, E, pi1, control=list(), swap=FALSE, Omega_start=NULL){
   E = as.matrix(E)
 
   ## Use Logistic estimates as starting values if they weren't provided
-  if(is.null(Omega_start)) {Omega_start = coef(glm(D~G*E, family=binomial(link='logit')))}
+  if(missing(startvals)) {
+    Omega_start = coef(glm(D~G*E, family=binomial(link='logit')))
+  } else {
+    Omega_start = startvals
+  }
 
   ## If we're swapping G & E, make the change now
   if(swap==TRUE) {
@@ -157,9 +161,9 @@ combo_asymp = function(D, G, E, pi1, control=list()){
   length_Omega = length(Omega_start)
 
   ##### Treat G & E as in Stalder et al. 2017
-  spmle_G_asy = spmle(Omega_start=Omega_start, D=D, G=G, E=E, pi1=pi1, swap=FALSE, control=con)
+  spmle_G_asy = spmle(startvals=Omega_start, D=D, G=G, E=E, pi1=pi1, swap=FALSE, control=con)
   ##### Swap G & E
-  spmle_E_asy = spmle(Omega_start=Omega_start, D=D, G=G, E=E, pi1=pi1, swap=TRUE, control=con)
+  spmle_E_asy = spmle(startvals=Omega_start, D=D, G=G, E=E, pi1=pi1, swap=TRUE, control=con)
 
   ## Define matrices
   Omega_all = c(spmle_G_asy$par, spmle_E_asy$par)
@@ -280,8 +284,8 @@ combo_boot = function(D, G, E, pi1, spmle_G_par, spmle_E_par, control=list()) {
     logistic_fit = glm(D_boot~G_boot*E_boot, family=binomial(link='logit'))
 
     ## Calculate both normal & swapped SPMLE with asymptotic SE
-   	spmle_G_asymp_boot = spmle(Omega_start=coef(logistic_fit), D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=FALSE, control=con)
-   	spmle_E_asymp_boot = spmle(Omega_start=coef(logistic_fit), D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=TRUE, control=con)
+   	spmle_G_asymp_boot = spmle(startvals=coef(logistic_fit), D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=FALSE, control=con)
+   	spmle_E_asymp_boot = spmle(startvals=coef(logistic_fit), D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=TRUE, control=con)
    	spmle_G_boot[b,] = spmle_G_asymp_boot$par
    	spmle_E_boot[b,] = spmle_E_asymp_boot$par
 

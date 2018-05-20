@@ -1,3 +1,146 @@
+f = function(x, l, data) {
+  if(missing(l)) print("missing lala!")
+  cl = match.call()
+  fr = formula(paste(cl[["x"]], "~", cl[["l"]]))
+  environment(fr)
+}
+a1=1:3 ; a2=4:6 ; a3=7:9
+f(a1, a2, a3)
+
+x1 = rnorm(9)
+x2 = rnorm(9, mean=20)
+y=x1+rnorm(9, 3)>0
+z=glm(y~x1, family=binomial, offset=x2)
+model.frame(z)
+model.matrix(z)
+########################
+if (missing(data))
+  data <- environment(formula)
+mf <- match.call(expand.dots = FALSE)
+m <- match(c("formula", "data", "subset", "weights", "na.action",
+             "etastart", "mustart", "offset"), names(mf), 0L)
+mf <- mf[c(1L, m)]
+mf$drop.unused.levels <- TRUE
+mf[[1L]] <- quote(stats::model.frame)
+mf <- eval(mf, parent.frame())
+if (identical(method, "model.frame"))
+  return(mf)
+if (!is.character(method) && !is.function(method))
+  stop("invalid 'method' argument")
+if (identical(method, "glm.fit"))
+  control <- do.call("glm.control", control)
+mt <- attr(mf, "terms")
+Y <- model.response(mf, "any")
+if (length(dim(Y)) == 1L) {
+  nm <- rownames(Y)
+  dim(Y) <- NULL
+  if (!is.null(nm))
+    names(Y) <- nm
+}
+X <- if (!is.empty.model(mt))
+  model.matrix(mt, mf, contrasts)
+else matrix(, NROW(Y), 0L)
+weights <- as.vector(model.weights(mf))
+if (!is.null(weights) && !is.numeric(weights))
+  stop("'weights' must be a numeric vector")
+if (!is.null(weights) && any(weights < 0))
+  stop("negative weights not allowed")
+offset <- as.vector(model.offset(mf))
+if (!is.null(offset)) {
+  if (length(offset) != NROW(Y))
+    stop(gettextf("number of offsets is %d should equal %d (number of observations)",
+                  length(offset), NROW(Y)), domain = NA)
+}
+mustart <- model.extract(mf, "mustart")
+etastart <- model.extract(mf, "etastart")
+fit <- eval(call(if (is.function(method)) "method" else method,
+                 x = X, y = Y, weights = weights, start = start, etastart = etastart,
+                 mustart = mustart, offset = offset, family = family,
+                 control = control, intercept = attr(mt, "intercept") >
+                   0L))
+
+################################################################################ Adding data to spmle
+## Calculate asymptotic SE for SPMLE
+spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
+  formula = formula(D~G*E)
+  cl = match.call()
+
+  if (missing(data)) {
+    # data = environment(formula)
+    data = globalenv()
+  }
+
+  mf <- match.call(expand.dots = FALSE)
+  m <- match(c("formula", "data", "subset", "weights", "na.action",
+               "etastart", "mustart", "offset"), names(mf), 0L)
+  mf <- mf[c(1L, m)]
+  mf$drop.unused.levels <- TRUE
+  mf[[1L]] <- quote(stats::model.frame)
+  # mf <- eval(mf, parent.frame())
+
+  return(mf)
+}
+
+  ## Set control parameters
+  con = list(trace=0, use_hess=FALSE, max_grad_tol=0.001, num_retries=2)
+  con[(names(control))] = control
+
+  ## Sizes of arrays
+  n = length(D)
+  ncase = sum(D)
+  ncontrol = n - ncase
+  G = as.matrix(G)
+  E = as.matrix(E)
+
+  ## Use Logistic estimates as starting values if they weren't provided
+  if(missing(startvals)) {
+    Omega_start = coef(glm(D~G*E, family=binomial(link='logit')))
+  } else {
+    Omega_start = startvals
+  }
+
+  ## If we're swapping G & E, make the change now
+  if(swap==TRUE) {
+    nG = NCOL(G)
+    nE = NCOL(E)
+    swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
+    reverse_swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
+    temp = G
+    G = E
+    E = temp
+  } else {
+    swap_order = reverse_swap_order = seq_along(Omega_start)
+  }
+
+  ## Precondition with hessian if requested
+  if(con$use_hess==TRUE) {con$invhessian.lt = solve(neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1))[lower.tri(diag(length(Omega_start)),diag=TRUE)]}
+
+  ## Calculate SPMLE for a given disease rate
+  spmle_max = maximize_spmle(Omega_start=Omega_start[reverse_swap_order], D=D, G=G, E=E, pi1=pi1, control=con)
+
+  ## Asymptotic SE for known disease rate
+  hess_zeta = hesszeta(Omega=spmle_max$par, D=D, G=G, E=E, pi1=pi1)
+  Sigma = ((ncontrol-1)*cov(hess_zeta$zeta0) + (ncase-1)*cov(hess_zeta$zeta1))/n  # (ncontrol-1) to correct denominator because cov uses the "sample covariance matrix" denominator of n-1
+  H_inv = -n*solve(hess_zeta$hessian)    # = (-hessian/n)^-1 = (Gamma_1 - Gamma_2)^-1
+  Lambda = H_inv %*% Sigma %*% t(H_inv)  # covar matrix of sqrt(n) * OmegaHat
+  SE_asy = sqrt(diag(Lambda)/n)
+
+  ## If we're swapping G & E, change back now
+  spmle_est = list(par   = spmle_max$par[swap_order],
+                   SE    = SE_asy[swap_order],
+                   cov   = Lambda[swap_order,swap_order]/n,
+                   H_inv = H_inv[swap_order,swap_order],
+                   Sigma = Sigma[swap_order,swap_order],
+                   zeta0 = hess_zeta$zeta0[, swap_order],
+                   zeta1 = hess_zeta$zeta1[, swap_order],
+                   ucminf = spmle_max,
+                   call  = cl)
+  class(spmle_est) = "spmle"
+
+  return(spmle_est)
+}
+
+
 ################################################################################ How to handle data frames (from CatCoxMLE)
 ## Get variables from data frame, if necessary
 if(class(data)=="matrix") data = as.data.frame(data)
@@ -29,6 +172,7 @@ sum(-2*log(abs(1-y-z$fitted.values)))
 names(z)
 
 sp = spmle(D=dat$D, G=dat$G, E=dat$E, pi1=0.3)
+sp = spmle(D=D, G=G, E=E, pi1=pi1)
 mm = model.matrix(~G*E)
 a = mm %*% sp$par
 
