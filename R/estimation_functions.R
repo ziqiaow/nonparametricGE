@@ -3,7 +3,7 @@
 
 ################################################################################ SPMLE
 
-## Calculate negative loglikelihood and gradient.  Report likelihood, store gradient
+## Wrapper to calculate negative loglikelihood and gradient.  Report likelihood, store gradient
 lik_fn = function(Omega, D, G, E, pi1) {
   lik_grad = neglikgrad(Omega=Omega, D=D, G=G, E=E, pi1=pi1) # neglikgrad is c++ code that calculates the negative loglikelihood and gradient
   assign(x="grad_val", value=lik_grad[[2]], pos=parent.frame())  # Store the gradient in the calling environment to retrieve it when ucminf tries to calculate the gradient
@@ -17,29 +17,40 @@ grad_fn = function(Omega, D, G, E, pi1) return(get(x="grad_val", pos=parent.fram
 ## Calculate the SPMLE (optionally precondition with hessian)
 SPMLE_fun = function(Omega_start, D, G, E, pi1, control=list()) {
   ## Set control parameters for SPMLE estimation
-  con = list(trace=0, max_grad_tol=0.001, num_tries=21)
+  con = list(trace=0, max_grad_tol=0.001, num_retries=21)
   con[(names(control))] = control
 
   ## Set control parameters for ucminf (using values from con where appropriate)
-  ucminf_con = list(grtol=1e-06, xtol=1e-12, stepmax=1, maxeval=500,
+  ucminf_con = list(trace=0, grtol=1e-06, xtol=1e-12, stepmax=1, maxeval=500,
                     grad="forward", gradstep=c(1e-06, 1e-08), invhessian.lt=NULL)
   ucminf_con[names(ucminf_con) %in% names(con)] = con[names(con) %in% names(ucminf_con)]
 
-  ## Optimize with ucminf.  Here Omega_start is the starting values for optimization and invhessian.lt is the lower triangle of the inverse hessian
+  ## Optimize with ucminf.  Here Omega_start is the starting value for optimization and invhessian.lt is the lower triangle of the inverse hessian
   SPMLE = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
 
-  ## When ucminf works, it works brilliantly.  But it has a nasty habit of declaring
+  ## When ucminf works, it works brilliantly (typically more than twice as fast
+  ## as the next-fastest algorithm).  But it has a nasty habit of declaring
   ## convergence before actually converging.  Here we check for convergance
   ## and rerun optimization if necessary.
   ##
   ## max_grad_tol = maximum allowable gradient
-  ## num_tries = number of times to retry optimization
+  ## num_retries = number of times to retry optimization
   if(!is.finite(SPMLE$info[1]) | SPMLE$info[1]>con$max_grad_tol) {
-    ucminf_con$invhessian.lt = NULL  # don't use hessian during retries
+    num_retries = max(ceiling(abs(num_retries)), 2)  # at least 2 retries
+    retry_counter = 1                                # set counter to 1
+
+    ## if failure happened when preconditioning with the hessian, try without
+    if(!is.null(ucminf_con$invhessian.lt)){
+      if(con$trace>-1) cat("UCMINF retry without hessian preconditioning\n")
+      retry_counter = retry_counter + 1
+      ucminf_con$invhessian.lt = NULL
+      SPMLE = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
+      if(is.finite(SPMLE$info[1]) & SPMLE$info[1]<con$max_grad_tol) break  # stop once we have convergence
+    }
     startvals = cbind(rep(0,length(Omega_start)), # create a matrix of starting values
-                      matrix(runif(length(Omega_start)*ceiling((con$num_tries-1)/4), min=-1, max=1), nrow=length(Omega_start)) + Omega_start,
-                      matrix(rnorm(length(Omega_start)*ceiling((con$num_tries-1)/4)), nrow=length(Omega_start)),
-                      matrix(rt(length(Omega_start)*ceiling((con$num_tries-1)/2), df=2), nrow=length(Omega_start)))
+                      matrix(runif(length(Omega_start)*ceiling((con$num_retries-1)/4), min=-1, max=1), nrow=length(Omega_start)) + Omega_start,
+                      matrix(rnorm(length(Omega_start)*ceiling((con$num_retries-1)/4)), nrow=length(Omega_start)),
+                      matrix(rt(length(Omega_start)*ceiling((con$num_retries-1)/2), df=2), nrow=length(Omega_start)))
     for(j in 1:ncol(startvals)) { # retry optimization
       updatetxt = paste0("UCMINF retry ",j,"\n")
       if(con$trace>-1) cat(updatetxt)
@@ -54,7 +65,7 @@ SPMLE_fun = function(Omega_start, D, G, E, pi1, control=list()) {
 ## Calculate asymptotic SE for SPMLE
 SPMLE_asymp = function(D, G, E, pi1, control=list(), swap=FALSE, Omega_start=NULL){
   ## Set control parameters
-  con = list(nboot=0, trace=0, usehess=FALSE)
+  con = list(trace=0, usehess=FALSE)
   con[(names(control))] = control
 
   ## Sizes of arrays
@@ -82,9 +93,9 @@ SPMLE_asymp = function(D, G, E, pi1, control=list(), swap=FALSE, Omega_start=NUL
 
   ## Calculate SPMLE for a given disease rate
   if(con$usehess==TRUE) {
-    H0 = neghess(Omega=Omega_start[reverse_swap_order], D=D, G=G, E=E, pi1=pi1)
+    con$invhessian.lt = solve(neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1))[lower.tri(diag(length(Omega_start)),diag=TRUE)]
   } else {
-    H0 = NULL
+    con$invhessian.lt = NULL
   }
 
   SPMLE = SPMLE_fun(Omega_start=Omega_start[reverse_swap_order], D=D, G=G, E=E, pi1=pi1, H0=H0, control=con)
@@ -332,7 +343,7 @@ composite_lik = function(Omega, D, G, E, pi1) {
 ## Calculate the composite SPMLE (maximize sum of normal SPMLE and swapped likelihoods)
 composite_est = function(Omega_start, D, G, E, pi1, control=list()) {
   ## Set control parameters
-  con = list(nboot=0, trace=0, usehess=FALSE, max_grad_tol=0.001, num_tries=21)
+  con = list(nboot=0, trace=0, usehess=FALSE, max_grad_tol=0.001, num_retries=21)
   con[(names(control))] = control
 
   nG = NCOL(G)
@@ -358,9 +369,9 @@ composite_est = function(Omega_start, D, G, E, pi1, control=list()) {
   ## Check for convergance, and rerun optimization if necessary
   if(!is.finite(composite_SPMLE$info[1]) | composite_SPMLE$info[1]>con$max_grad_tol) {
     startvals=cbind(rep(0,length(Omega_start)), # create a matrix of starting values
-                    matrix(runif(length(Omega_start)*ceiling((con$num_tries-1)/4), min=-1, max=1), nrow=length(Omega_start)) + Omega_start,
-                    matrix(rnorm(length(Omega_start)*ceiling((con$num_tries-1)/4)), nrow=length(Omega_start)),
-                    matrix(rt(length(Omega_start)*ceiling((con$num_tries-1)/2), df=2), nrow=length(Omega_start)))
+                    matrix(runif(length(Omega_start)*ceiling((con$num_retries-1)/4), min=-1, max=1), nrow=length(Omega_start)) + Omega_start,
+                    matrix(rnorm(length(Omega_start)*ceiling((con$num_retries-1)/4)), nrow=length(Omega_start)),
+                    matrix(rt(length(Omega_start)*ceiling((con$num_retries-1)/2), df=2), nrow=length(Omega_start)))
     for(j in 1:ncol(startvals)) { # retry optimization
       updatetxt = paste0("UCMINF retry ",j,"\n")
       if(con$trace>-1) {cat(updatetxt)}

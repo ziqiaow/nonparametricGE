@@ -1,10 +1,12 @@
 
+scale_vec = 1/c(1, apply(model.matrix(~0+G*E), 2, sd))
+
+################################################################################ test optimization algorithms
 
 # ox = optimx(par=Omega_start, fn=lik_fn, gr=grad_fn, hess=neghess, control=list(all.methods=TRUE, save.failures=TRUE, trace=0), D=D, G=G, E=E, pi1=pi1)
 
 uc = ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
 nlr = nloptr(x0=Omega_start, eval_f=neglikgrad, opts=list(algorithm="NLOPT_LD_LBFGS", xtol_rel = 1e-4), D=D, G=G, E=E, pi1=pi1)
-
 
 system.time(print(uc<-ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=list(invhessian.lt=solve(neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1))[lower.tri(diag(length(Omega_start)),diag=TRUE)]), D=D, G=G, E=E, pi1=pi1)))
 
