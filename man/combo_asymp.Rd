@@ -18,7 +18,7 @@ combo_asymp(D, G, E, pi1, control = list())
 \item{control}{a list of control parameters.
 \code{nboot} number of bootstraps.  Default \code{0}.
 \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
-\code{usehess} logical: precondition optimization with the hessian.  Default \code{FALSE}.}
+\code{use_hess} logical: precondition optimization with the hessian.  Default \code{FALSE}.}
 }
 \value{
 A list with a matrix of estimates and SEs and a bunch of other stuff

@@ -23,5 +23,5 @@
 #' @importFrom Rcpp evalCpp
 #' @importFrom utils head
 #' @importFrom stats binomial coef cor cov glm lm model.matrix plogis qlogis qnorm rbinom rgamma rnorm rt runif sd
-#' @importFrom utils read.csv write.csv write.table
+#' @importFrom stats model.frame setNames
 "_PACKAGE"

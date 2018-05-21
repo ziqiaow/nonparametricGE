@@ -68,8 +68,7 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 }
 
 
-#' Semiparametric Maximum Pseudolieklihood Estimator for Case-Control Studies Under G-E Independence
-#' in the Source Population.
+#' Semiparametric Maximum Pseudolieklihood Estimator for Case-Control Studies Under G-E Independence.
 #'
 #' \code{spmle} maximizes the retrospective pseudolikelihood of case-control data under the assumption
 #' of G-E independence in the underlying population.
@@ -84,39 +83,39 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 #' it works brilliantly (typically more than twice as fast as the next-fastest algorithm).
 #' But it has a nasty habit of declaring convergence before actually converging.
 #' To address this, \code{spmle} checks the maximum gradient at "convergence", and can rerun the optimization
-#' using different starting values.  \code{control} can supply any of the following components:
+#' using different starting values.  The \code{control} argument can supply any of the following components:
 #' \describe{
-#'   \item \code{max_grad_tol} maximum allowable gradient at convergence.  \code{spmle} does not
-#'     consider the optimization to have converged if the maximum gradient >\code{max_grad_tol}.
-#'     Default \code{max_grad_tol = 0.001}.
-#'   \item \code{num_retries} number of times to retry optimization.  An error is produced if
+#'   \item{\code{max_grad_tol}}{maximum allowable gradient at convergence.  \code{spmle} does not
+#'     consider the optimization to have converged if the maximum gradient \code{> max_grad_tol}.
+#'     Default \code{max_grad_tol = 0.001}.}
+#'   \item{\code{num_retries}}{number of times to retry optimization.  An error is produced if
 #'     the optimization has not converged after \code{num_retries}.  Different starting values
-#'     are used for each retry.  Default \code{num_retries = 2}.
-#'   \item \code{use_hess} a logical value instructing \code{spmle} to use the analytic hessian
-#'     to precondition the optimization.  This brinfs significant speed benefits, and is one reason
+#'     are used for each retry.  Default \code{num_retries = 2}.}
+#'   \item{\code{use_hess}}{a logical value instructing \code{spmle} to use the analytic hessian
+#'     to precondition the optimization.  This brings significant speed benefits, and is one reason
 #'     \code{ucminf} is so fast.  For unknown reasons, preconditioning causes computers with
-#'     certain Intel CPUs to prematurely terminate iterating.  By default \code{use_hess = TRUE},
-#'     but if you notice that \code{ucminf} never converges during the first attempt, try setting \code{use_hess = FALSE}.
-#'   \item \code{trace} a scalar or logical value that is used by both \code{spmle} and \code{ucminf}
+#'     certain Intel CPUs to prematurely terminate iterating.  By default, \code{use_hess = TRUE},
+#'     but if you notice that \code{ucminf} never converges during the first attempt, try setting \code{use_hess = FALSE}.}
+#'   \item{\code{trace}}{a scalar or logical value that is used by both \code{spmle} and \code{ucminf}
 #'     to control the printing of detailed tracing information.
 #'     If TRUE or >0, details of each \code{ucminf} iteration are printed.
 #'     If FALSE or 0, \code{ucminf} iteration details are suppressed but \code{spmle} still
-#'     prints optimization retries.  If \code{trace < 0} nothing is printed.  Default \code{trace = 0}.
-#'   \item additional control parameters are not used by \code{spmle}, but are passed to \code{\link[ucminf]{ucminf}}.
-#'     Note that the \code{ucminf} algorithm has four stopping criterion, and \code{ucminf} will
+#'     prints optimization retries.  If \code{trace < 0} nothing is printed.  Default \code{trace = 0}.}
+#'   \item{additional control parameters}{not used by \code{spmle}, but are passed to \code{\link[ucminf]{ucminf}}.
+#'     Note that the \code{ucminf} algorithm has four stopping criteria, and \code{ucminf} will
 #'     declare convergence if any one of them has been met.  The \code{ucminf} control parameter
 #'     "\code{grtol}" controls \code{ucminf}'s gradient stopping criterion, which defaults to
-#'     \code{1e-6}.  \code{grtol} should not be set larger than the \code{spmle} control parameter \code{max_grad_tol}.
+#'     \code{1e-6}.  \code{grtol} should not be set larger than the \code{spmle} control parameter \code{max_grad_tol}.}
 #' }
 #' @param D a binary vector of disease status (1=case, 0=control).
 #' @param G a vector or matrix (if multivariate) containing genetic data. Can be continuous, discrete, or a combination.
 #' @param E a vector or matrix (if multivariate) containing environmental data. Can be continuous, discrete, or a combination.
 #' @param pi1 the population disease rate, a scalar in [0, 1).  Using \code{pi1=0} is the rare disease approximation.
-#' @param data an optional data frame, list or environment (or object coercible by \code{\link[base]{as.data.frame}}
+#' @param data an optional data frame, list, or environment (or object coercible by \code{\link[base]{as.data.frame}}
 #'   to a data frame) containing the variables in the model.  If not found in data, the variables are taken from
 #'   the environment from which \code{spmle} is called.
 #' @param control a list of control parameters that allow the user to control the optimization algorithm.  See 'Details'.
-#' @param swap a logical scalar - rarely of interest to the end user.  Dependence on the distributions of G and E
+#' @param swap a logical scalar rarely of interest to the end user.  Dependence on the distributions of G and E
 #'   are removed using different methods; this switch swaps them to produce a symmetric estimator with identical
 #'   properties to the SPMLE.  Default \code{FALSE}.
 #' @param startvals an optional numeric vector of coefficient starting values for optimization.  Usually left blank,

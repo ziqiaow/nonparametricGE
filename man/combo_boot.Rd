@@ -2,9 +2,11 @@
 % Please edit documentation in R/estimation_functions.R
 \name{combo_boot}
 \alias{combo_boot}
-\title{Function to calculate bootstrapped SE for SPMLE_G & SPMLE_E estimates, as well as bootstrapped Combo estimate}
+\title{\code{nboot} is the number of bootstrap samples to be used when calculating the bootstrap SE.  Setting \code{nboot=0},
+ the default, will skip the bootstrap and calculate only asymptotic SE.
+Function to calculate bootstrapped SE for spmle_G & spmle_E estimates, as well as bootstrapped Combo estimate}
 \usage{
-combo_boot(D, G, E, pi1, SPMLE_G_par, SPMLE_E_par, control = list())
+combo_boot(D, G, E, pi1, spmle_G_par, spmle_E_par, control = list())
 }
 \arguments{
 \item{D}{a binary vector of disease status (1=case, 0=control).}
@@ -15,18 +17,20 @@ combo_boot(D, G, E, pi1, SPMLE_G_par, SPMLE_E_par, control = list())
 
 \item{pi1}{the population disease rate, a scalar in [0, 1).  Using \code{pi1=0} is the rare disease approximation.}
 
-\item{SPMLE_G_par, SPMLE_E_par}{Parameter estimates generated from \code{\link{combo_asymp}}}
+\item{spmle_G_par, spmle_E_par}{Parameter estimates generated from \code{\link{combo_asymp}}}
 
 \item{control}{a list of control parameters.
 \code{nboot} number of bootstraps.  Default \code{0}.
 \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
-\code{usehess} logical: precondition optimization with the hessian.  Default \code{FALSE}.}
+\code{use_hess} logical: precondition optimization with the hessian.  Default \code{FALSE}.}
 }
 \value{
 A list with a matrix of estimates and SEs and a bunch of other stuff
 }
 \description{
-Function to calculate bootstrapped SE for SPMLE_G & SPMLE_E estimates, as well as bootstrapped Combo estimate
+\code{nboot} is the number of bootstrap samples to be used when calculating the bootstrap SE.  Setting \code{nboot=0},
+ the default, will skip the bootstrap and calculate only asymptotic SE.
+Function to calculate bootstrapped SE for spmle_G & spmle_E estimates, as well as bootstrapped Combo estimate
 }
 \seealso{
 \code{\link{simulate_complex}} to simulate data
