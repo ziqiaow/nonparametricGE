@@ -68,48 +68,60 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 }
 
 
-#' Semiparametric Maximum Pseudolieklihood Estimator for case-control studies under G-E independence.
+#' Semiparametric Maximum Pseudolieklihood Estimator for Case-Control Studies Under G-E Independence
+#' in the Source Population.
 #'
-#' \code{spmle} maximizes the retrospective pseudolikelihood of case-control data under the assumption of G-E independence.
+#' \code{spmle} maximizes the retrospective pseudolikelihood of case-control data under the assumption
+#' of G-E independence in the underlying population.
 #' The marginal distributions of G and E are treated nonparametrically.
 #'
 #' This function applies the method of Stalder et. al. (2017) to maximize the
 #' retrospective pseudolikelihood of case-control data under the assumption of G-E independence.
 #' It currently supports the model with G and E main effects, and a multiplicative G*E interaction.
 #'
-#'
-#'
-#'
-#' \code{spmle} uses the optimization algorithm UCMINF from the ucminf package.
-#' When ucminf works, it works brilliantly (typically more than twice as fast
-#' as the next-fastest algorithm).  But it has a nasty habit of declaring
-#' convergence before actually converging.
-#' max_grad_tol = maximum allowable gradient
-#' num_retries = number of times to retry optimization
-#'
-#' Omega_start is the starting value for optimization and invhessian.lt is the lower triangle of the inverse hessian
-#' , and will restart with different starting values
-#' if it does not converge.  If the algorithm does not converge after repeated attempts with different
-#' starting values, \code{spmle} will fail and produce an error.
-#'
-#'
-#'
-#'
+#' The \code{control} argument is a list that controls the behavior of the optimization algorithm
+#' \code{\link[ucminf]{ucminf}} from the \pkg{ucminf} package.  When \code{ucminf} works,
+#' it works brilliantly (typically more than twice as fast as the next-fastest algorithm).
+#' But it has a nasty habit of declaring convergence before actually converging.
+#' To address this, \code{spmle} checks the maximum gradient at "convergence", and can rerun the optimization
+#' using different starting values.  \code{control} can supply any of the following components:
+#' \describe{
+#'   \item \code{max_grad_tol} maximum allowable gradient at convergence.  \code{spmle} does not
+#'     consider the optimization to have converged if the maximum gradient >\code{max_grad_tol}.
+#'     Default \code{max_grad_tol = 0.001}.
+#'   \item \code{num_retries} number of times to retry optimization.  An error is produced if
+#'     the optimization has not converged after \code{num_retries}.  Different starting values
+#'     are used for each retry.  Default \code{num_retries = 2}.
+#'   \item \code{use_hess} a logical value instructing \code{spmle} to use the analytic hessian
+#'     to precondition the optimization.  This brinfs significant speed benefits, and is one reason
+#'     \code{ucminf} is so fast.  For unknown reasons, preconditioning causes computers with
+#'     certain Intel CPUs to prematurely terminate iterating.  By default \code{use_hess = TRUE},
+#'     but if you notice that \code{ucminf} never converges during the first attempt, try setting \code{use_hess = FALSE}.
+#'   \item \code{trace} a scalar or logical value that is used by both \code{spmle} and \code{ucminf}
+#'     to control the printing of detailed tracing information.
+#'     If TRUE or >0, details of each \code{ucminf} iteration are printed.
+#'     If FALSE or 0, \code{ucminf} iteration details are suppressed but \code{spmle} still
+#'     prints optimization retries.  If \code{trace < 0} nothing is printed.  Default \code{trace = 0}.
+#'   \item additional control parameters are not used by \code{spmle}, but are passed to \code{\link[ucminf]{ucminf}}.
+#'     Note that the \code{ucminf} algorithm has four stopping criterion, and \code{ucminf} will
+#'     declare convergence if any one of them has been met.  The \code{ucminf} control parameter
+#'     "\code{grtol}" controls \code{ucminf}'s gradient stopping criterion, which defaults to
+#'     \code{1e-6}.  \code{grtol} should not be set larger than the \code{spmle} control parameter \code{max_grad_tol}.
+#' }
 #' @param D a binary vector of disease status (1=case, 0=control).
 #' @param G a vector or matrix (if multivariate) containing genetic data. Can be continuous, discrete, or a combination.
 #' @param E a vector or matrix (if multivariate) containing environmental data. Can be continuous, discrete, or a combination.
 #' @param pi1 the population disease rate, a scalar in [0, 1).  Using \code{pi1=0} is the rare disease approximation.
-#' @param control a list of control parameters that allow the user to control the optimization algorithm.  See
-#'  \code{nboot} is the number of bootstrap samples to be used when calculating the bootstrap SE.  Setting \code{nboot=0},
-#'  the default, will skip the bootstrap and calculate only asymptotic SE.
-#'  \code{trace} is a scalar or logical value.  If TRUE or >0, tracing information is produced.  Default \code{trace=0}.
-#'  \code{usehess} is a logical value.  If TRUE (the default), the analytic hessian is used to precondition the optimization using UCMINF.
-#' @param swap a logical scalar - rarely of interest to the end user.  Dependence on the distributions of G and E are removed using
-#'   different methods; this switch swaps them to produce a symmetric estimator with identical properties to the SPMLE.  Default \code{FALSE}.
-#' @param startvals a numeric vector of coefficient starting values for optimization.  When
-#'
-#' @return If \code{control$nboot=0}, a matrix with two rows: the coefficient estimites and the asymptotic SE.
-#'  If \code{control$nboot>0} the matrix will have a third row with the bootstrap SE.
+#' @param data an optional data frame, list or environment (or object coercible by \code{\link[base]{as.data.frame}}
+#'   to a data frame) containing the variables in the model.  If not found in data, the variables are taken from
+#'   the environment from which \code{spmle} is called.
+#' @param control a list of control parameters that allow the user to control the optimization algorithm.  See 'Details'.
+#' @param swap a logical scalar - rarely of interest to the end user.  Dependence on the distributions of G and E
+#'   are removed using different methods; this switch swaps them to produce a symmetric estimator with identical
+#'   properties to the SPMLE.  Default \code{FALSE}.
+#' @param startvals an optional numeric vector of coefficient starting values for optimization.  Usually left blank,
+#'   in which case logistic regression estimates are used as starting values.
+#' @return an object of class \code{spmle}.
 #' @seealso \code{\link{simulate_complex}} to simulate data
 #' @examples
 #' # Simulation from Table 1 in Stalder et. al. (2017)
@@ -141,7 +153,7 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 #'
 #' # SPMLE using the rare disease assumption
 #' #and with bootstrap SE, no tracing, and no hessian preconditioning.
-#' spmle(D=dat$D, G=dat$G, E=dat$E, pi1=0, control=list(nboot=100, trace=0, usehess=FALSE))
+#' spmle(D=dat$D, G=dat$G, E=dat$E, pi1=0, control=list(nboot=100, trace=0, use_hess=TRUE))
 #' @export
 spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   ## Store the function call
@@ -152,12 +164,12 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   Gname = substitute(G)
   Ename = substitute(E)
 
-  ## Store the formula with user-provided variable names.  For consistency with estimators that
-  ## accept formulas (like lm), set the formula environment as if it had been an argument.
+  ## Store the formula with user-provided variable names.  For consistency with estimators that accept formulas (like lm),
+  ## set the formula environment to the calling environment (as if formula had been an argument).
   formula = formula(paste(as.character(as.expression(Dname)), "~", as.character(as.expression(Gname)), "*", as.character(as.expression(Ename))))
-  attr(formula, ".Environment") = parent.env(environment(formula))
+  attr(formula, ".Environment") = parent.frame()
 
-  ## If no data.frame was supplied, set data to the environment of formula (typically globalenv())
+  ## If no data.frame was supplied, set data to the calling environment
   if(missing(data)) {
     data = environment(formula)
   } else {                          # evaluate D, G, and E in data, if appropriate
@@ -185,7 +197,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   if(is.null(names(Omega_start))) {names(Omega_start) = colnames(model.matrix(formula, model[1,]))}
 
   ## Set control parameters
-  con = list(trace=0, use_hess=FALSE, max_grad_tol=0.001, num_retries=2)
+  con = list(trace=0, use_hess=TRUE, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
 
   ## Sizes of arrays
@@ -258,7 +270,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
 #' @export
 combo_asymp = function(D, G, E, pi1, control=list()){
   ## Set control parameters
-  con = list(nboot=0, trace=0, use_hess=FALSE)
+  con = list(nboot=0, trace=0, use_hess=TRUE)
   con[(names(control))] = control
 
   ## Sizes of arrays
@@ -334,7 +346,8 @@ combo_asymp = function(D, G, E, pi1, control=list()){
   ))
 }
 
-
+#' \code{nboot} is the number of bootstrap samples to be used when calculating the bootstrap SE.  Setting \code{nboot=0},
+#'  the default, will skip the bootstrap and calculate only asymptotic SE.
 #' Function to calculate bootstrapped SE for spmle_G & spmle_E estimates, as well as bootstrapped Combo estimate
 #'
 #' @param D a binary vector of disease status (1=case, 0=control).
@@ -351,7 +364,7 @@ combo_asymp = function(D, G, E, pi1, control=list()){
 #' @export
 combo_boot = function(D, G, E, pi1, spmle_G_par, spmle_E_par, control=list()) {
   ## Set control parameters
-  con = list(nboot=0, trace=0, use_hess=FALSE)
+  con = list(nboot=0, trace=0, use_hess=TRUE)
   con[(names(control))] = control
 
   ## Correct too-small bootstrap sample
@@ -464,7 +477,7 @@ composite_lik = function(Omega, D, G, E, pi1) {
 ## Calculate the composite SPMLE (maximize sum of normal SPMLE and swapped likelihoods)
 composite_est = function(Omega_start, D, G, E, pi1, control=list()) {
   ## Set control parameters
-  con = list(nboot=0, trace=0, use_hess=FALSE, max_grad_tol=0.001, num_retries=21)
+  con = list(nboot=0, trace=0, use_hess=TRUE, max_grad_tol=0.001, num_retries=21)
   con[(names(control))] = control
 
   nG = NCOL(G)
@@ -508,7 +521,7 @@ composite_est = function(Omega_start, D, G, E, pi1, control=list()) {
 ## Calculate asymptotic SE for NPMLE
 composite_asymp = function(D, G, E, pi1, Omega_start=NULL, control=list()){
   ## Set control parameters
-  con = list(nboot=0, trace=0, use_hess=FALSE)
+  con = list(nboot=0, trace=0, use_hess=TRUE)
   con[(names(control))] = control
 
   ## Sizes of arrays

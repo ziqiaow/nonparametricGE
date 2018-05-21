@@ -70,12 +70,12 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   Gname = substitute(G)
   Ename = substitute(E)
 
-  ## Store the formula with user-provided variable names.  For consistency with estimators that
-  ## accept formulas (like lm), set the formula environment as if it had been an argument.
+  ## Store the formula with user-provided variable names.  For consistency with estimators that accept formulas (like lm),
+  ## set the formula environment to the calling environment (as if formula had been an argument).
   formula = formula(paste(as.character(as.expression(Dname)), "~", as.character(as.expression(Gname)), "*", as.character(as.expression(Ename))))
-  attr(formula, ".Environment") = parent.env(environment(formula))
+  attr(formula, ".Environment") = parent.frame()
 
-  ## If no data.frame was supplied, set data to the environment of formula (typically globalenv())
+  ## If no data.frame was supplied, set data to the calling environment
   if(missing(data)) {
     data = environment(formula)
   } else {                          # evaluate D, G, and E in data, if appropriate
@@ -103,7 +103,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   if(is.null(names(Omega_start))) {names(Omega_start) = colnames(model.matrix(formula, model[1,]))}
 
   ## Set control parameters
-  con = list(trace=0, use_hess=FALSE, max_grad_tol=0.001, num_retries=2)
+  con = list(trace=0, use_hess=TRUE, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
 
   ## Sizes of arrays
