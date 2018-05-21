@@ -182,8 +182,9 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   if(class(G)=="factor") {G=model.matrix(~G)[,-1]}
   if(class(E)=="factor") {E=model.matrix(~E)[,-1]}
 
-  ## Save model frame
-  model = model.frame(formula=formula, data=data)
+  ## Create model.frame (response, no interactions) and model.matrix (all predictors, including interactions)
+  model_frame = model.frame(formula=formula, data=data)
+  model_matrix = model.matrix(formula, model_frame)
 
   ## If starting values weren't provided, use logistic regression estimates
   if(missing(startvals)) {
@@ -193,7 +194,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   }
 
   ## If user-provided startval lacked names, add them
-  if(is.null(names(Omega_start))) {names(Omega_start) = colnames(model.matrix(formula, model[1,]))}
+  if(is.null(names(Omega_start))) {names(Omega_start) = colnames(model_matrix)}
 
   ## Set control parameters
   con = list(trace=0, use_hess=TRUE, max_grad_tol=0.001, num_retries=2)
@@ -210,8 +211,8 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   if(swap==TRUE) {
     nG = NCOL(G)
     nE = NCOL(E)
-    swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
-    reverse_swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
+    swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
+    reverse_swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
     temp = G
     G = E
     E = temp
@@ -223,7 +224,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   if(con$use_hess==TRUE) {con$invhessian.lt = solve(neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1))[lower.tri(diag(length(Omega_start)),diag=TRUE)]}
 
   ## Calculate SPMLE for a given disease rate
-  spmle_max = maximize_spmle(Omega_start=Omega_start[reverse_swap_order], D=D, G=G, E=E, pi1=pi1, control=con)
+  spmle_max = maximize_spmle(Omega_start=Omega_start[swap_order], D=D, G=G, E=E, pi1=pi1, control=con)
 
   ## Asymptotic SE for known disease rate
   hess_zeta = hesszeta(Omega=spmle_max$par, D=D, G=G, E=E, pi1=pi1)
@@ -232,19 +233,32 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   Lambda = H_inv %*% Sigma %*% t(H_inv)  # covar matrix of sqrt(n) * OmegaHat
   SE_asy = sqrt(diag(Lambda)/n)
 
-  ## Compile results into a list.  If we're swapping G & E, change back now
-  spmle_est = list(coefficients = spmle_max$par[swap_order],
-                   SE    = SE_asy[swap_order],
-                   cov   = Lambda[swap_order,swap_order]/n,
-                   H_inv = H_inv[swap_order,swap_order],
-                   Sigma = Sigma[swap_order,swap_order],
-                   zeta0 = hess_zeta$zeta0[, swap_order],
-                   zeta1 = hess_zeta$zeta1[, swap_order],
+  ## Calculate predictions
+  linear_predictors = model_matrix %*% spmle_max$par  # logistic scale
+  fitted_values = plogis(q=linear_predictors)         # probability scale
+
+  ## Deviance residuals and total deviance
+  deviance_resid = -2*log(abs(1-D-fitted_values))
+  total_deviance = sum(deviance_resid)
+
+  ## Compile results into a list.  Use glm-object naming conventions.  If we swapped G & E, change back now
+  spmle_est = list(coefficients = spmle_max$par[reverse_swap_order],
+                   SE    = SE_asy[reverse_swap_order],
+                   cov   = Lambda[reverse_swap_order,reverse_swap_order]/n,
+                   H_inv = H_inv[reverse_swap_order,reverse_swap_order],
+                   Sigma = Sigma[reverse_swap_order,reverse_swap_order],
+                   zeta0 = hess_zeta$zeta0[, reverse_swap_order],
+                   zeta1 = hess_zeta$zeta1[, reverse_swap_order],
                    ucminf = spmle_max,
                    call  = cl,
                    formula = formula,
                    data = data,
-                   model = model)
+                   model = model_frame,
+                   linear.predictors = linear_predictors,
+                   fitted.values = fitted_values,
+                   residuals = deviance_resid,
+                   deviance = total_deviance,
+                   aic = NA)
 
   ## Return an object of class spmle, which inherits from glm and lm
   class(spmle_est) = c("spmle")#, "glm", "lm")
@@ -382,7 +396,7 @@ combo_boot = function(D, G, E, pi1, spmle_G_par, spmle_E_par, control=list()) {
   E = as.matrix(E)
   nG = NCOL(G)
   nE = NCOL(E)
-  swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
+  reverse_swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
 
   ############### Bootstrap ####################
   ## Split the data into controls & cases for balanced resampling (same # of controls & cases in bootstraps as in original data)
@@ -463,12 +477,12 @@ combo_boot = function(D, G, E, pi1, spmle_G_par, spmle_E_par, control=list()) {
 composite_lik = function(Omega, D, G, E, pi1) {
   nG = NCOL(G)
   nE = NCOL(E)
-  swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
-  reverse_swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
+  reverse_swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
+  swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
   spmle_G_lik = neglikgrad(Omega=Omega, D=D, G=G, E=E, pi1=pi1)  # neg loglik from spmle
-  spmle_E_lik = neglikgrad(Omega=Omega[reverse_swap_order], D=D, G=E, E=G, pi1=pi1)  # neg loglik from swap
-  assign(x="grad_val", value=spmle_G_lik$gradient + spmle_E_lik$gradient[swap_order], pos=parent.frame())  # Store the gradient in the calling environment to retrieve it when ucminf tries to calculate the gradient
-  # grad_val <<- spmle_G_lik$gradient + spmle_E_lik$gradient[swap_order] # Store the gradient in .GlobalEnv to retrieve it when ucminf tries to calculate the gradient
+  spmle_E_lik = neglikgrad(Omega=Omega[swap_order], D=D, G=E, E=G, pi1=pi1)  # neg loglik from swap
+  assign(x="grad_val", value=spmle_G_lik$gradient + spmle_E_lik$gradient[reverse_swap_order], pos=parent.frame())  # Store the gradient in the calling environment to retrieve it when ucminf tries to calculate the gradient
+  # grad_val <<- spmle_G_lik$gradient + spmle_E_lik$gradient[reverse_swap_order] # Store the gradient in .GlobalEnv to retrieve it when ucminf tries to calculate the gradient
   return(spmle_G_lik$objective + spmle_E_lik$objective)
 }
 
@@ -481,14 +495,14 @@ composite_est = function(Omega_start, D, G, E, pi1, control=list()) {
 
   nG = NCOL(G)
   nE = NCOL(E)
-  swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
-  reverse_swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
+  reverse_swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
+  swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
 
   if(con$use_hess==TRUE) {
     ## Calculate hessian
     hg = neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1)
-    he = neghess(Omega=Omega_start[reverse_swap_order], D=D, G=E, E=G, pi1=pi1)
-    H0 = (hg + he[swap_order,swap_order])
+    he = neghess(Omega=Omega_start[swap_order], D=D, G=E, E=G, pi1=pi1)
+    H0 = (hg + he[reverse_swap_order,reverse_swap_order])
 
     ## Lower triangle of inverse hessian (use identity matrix if hessian is not PD)
     invhessian.lt = tryCatch(solve(H0), error=function(x) diag(length(Omega_start)))[lower.tri(diag(length(Omega_start)),diag=TRUE)]
@@ -532,8 +546,8 @@ composite_asymp = function(D, G, E, pi1, Omega_start=NULL, control=list()){
   nG = NCOL(G)
   nE = NCOL(E)
 
-  swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
-  reverse_swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
+  reverse_swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
+  swap_order = c(1,(2+nG):(1+nG+nE),2:(1+nG), rep(seq(from=(2+nG+nE), by=nG, length.out=nE), times=nG) + rep(0:(nG-1), each=nE))
 
   ## Use Logistic estimates as starting values if they weren't provided
   if(is.null(Omega_start)){
@@ -548,15 +562,15 @@ composite_asymp = function(D, G, E, pi1, Omega_start=NULL, control=list()){
   ### Asymptotic SE for known disease rate
   ## First calculate hessians (Gamma 1 & 2), and zetas for SPMLE_G and SPMLE_E
   hess_zeta_G = hesszeta(Omega=composite_par, D=D, G=G, E=E, pi1=pi1)
-  hess_zeta_E = hesszeta(Omega=composite_par[reverse_swap_order], D=D, G=E, E=G, pi1=pi1)
+  hess_zeta_E = hesszeta(Omega=composite_par[swap_order], D=D, G=E, E=G, pi1=pi1)
 
   ## Combined hessian
-  H = (hess_zeta_G$hessian + hess_zeta_E$hessian[swap_order,swap_order])/2
+  H = (hess_zeta_G$hessian + hess_zeta_E$hessian[reverse_swap_order,reverse_swap_order])/2
   H_inv = -n*solve(H)             # = -(hessian/n)^(-1) = (Gamma_1 - Gamma_2)^-1
 
   ## Combined zetas
-  Zeta0 = (hess_zeta_G$zeta0 + hess_zeta_E$zeta0[, swap_order])/2
-  Zeta1 = (hess_zeta_G$zeta1 + hess_zeta_E$zeta1[, swap_order])/2
+  Zeta0 = (hess_zeta_G$zeta0 + hess_zeta_E$zeta0[, reverse_swap_order])/2
+  Zeta1 = (hess_zeta_G$zeta1 + hess_zeta_E$zeta1[, reverse_swap_order])/2
   Sigma = ((ncontrol-1)*cov(Zeta0) + (ncase-1)*cov(Zeta1))/n
 
   ## Asymptotic SE for the composite estimator follows the same pattern as the standard SPMLE

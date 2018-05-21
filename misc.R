@@ -1,63 +1,4 @@
-f = function(x, l, data) {
-  if(missing(l)) print("missing lala!")
-  cl = match.call()
-  fr = formula(paste(cl[["x"]], "~", cl[["l"]]))
-  environment(fr)
-}
-a1=1:3 ; a2=4:6 ; a3=7:9
-f(a1, a2, a3)
 
-x1 = rnorm(9)
-x2 = rnorm(9, mean=20)
-y=x1+rnorm(9, 3)>0
-z=glm(y~x1, family=binomial, offset=x2)
-model.frame(z)
-model.matrix(z)
-########################
-if (missing(data))
-  data <- environment(formula)
-mf <- match.call(expand.dots = FALSE)
-m <- match(c("formula", "data", "subset", "weights", "na.action",
-             "etastart", "mustart", "offset"), names(mf), 0L)
-mf <- mf[c(1L, m)]
-mf$drop.unused.levels <- TRUE
-mf[[1L]] <- quote(stats::model.frame)
-mf <- eval(mf, parent.frame())
-if (identical(method, "model.frame"))
-  return(mf)
-if (!is.character(method) && !is.function(method))
-  stop("invalid 'method' argument")
-if (identical(method, "glm.fit"))
-  control <- do.call("glm.control", control)
-mt <- attr(mf, "terms")
-Y <- model.response(mf, "any")
-if (length(dim(Y)) == 1L) {
-  nm <- rownames(Y)
-  dim(Y) <- NULL
-  if (!is.null(nm))
-    names(Y) <- nm
-}
-X <- if (!is.empty.model(mt))
-  model.matrix(mt, mf, contrasts)
-else matrix(, NROW(Y), 0L)
-weights <- as.vector(model.weights(mf))
-if (!is.null(weights) && !is.numeric(weights))
-  stop("'weights' must be a numeric vector")
-if (!is.null(weights) && any(weights < 0))
-  stop("negative weights not allowed")
-offset <- as.vector(model.offset(mf))
-if (!is.null(offset)) {
-  if (length(offset) != NROW(Y))
-    stop(gettextf("number of offsets is %d should equal %d (number of observations)",
-                  length(offset), NROW(Y)), domain = NA)
-}
-mustart <- model.extract(mf, "mustart")
-etastart <- model.extract(mf, "etastart")
-fit <- eval(call(if (is.function(method)) "method" else method,
-                 x = X, y = Y, weights = weights, start = start, etastart = etastart,
-                 mustart = mustart, offset = offset, family = family,
-                 control = control, intercept = attr(mt, "intercept") >
-                   0L))
 
 ################################################################################ Adding data to spmle
 ## Calculate asymptotic SE for SPMLE
@@ -178,7 +119,7 @@ unconstrainedPar = setNames(object=unconstrainedMLE$par, nm=c(probCatNames[-1], 
 set.seed(11)
 x=rnorm(9)
 # xx=rnorm(8)
-y=x+rnorm(9, 3)>0
+y=x+rnorm(9, sd=3)>0
 z=glm(y~x, family=binomial)
 head(model.matrix(z))
 head(model.frame(z))
@@ -192,7 +133,7 @@ names(z)
 sp = spmle(D=dat$D, G=dat$G, E=dat$E, pi1=0.3)
 sp = spmle(D=D, G=G, E=E, pi1=pi1)
 mm = model.matrix(~G*E)
-a = mm %*% sp$par
+linear_predictors = mm %*% sp$par
 
 G[1,] = E[1,] = 10
 
