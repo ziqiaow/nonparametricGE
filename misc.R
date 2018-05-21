@@ -75,15 +75,19 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   formula = formula(paste(as.character(as.expression(Dname)), "~", as.character(as.expression(Gname)), "*", as.character(as.expression(Ename))))
   attr(formula, ".Environment") = parent.env(environment(formula))
 
-  ## Evaluate D, G, and E in data, if appropriate
-  if(!missing(data)) {
-    if(class(data)=="matrix") {data = as.data.frame(data)}
-    D = as.matrix(with(data=data, eval(Dname)))
-    G = as.matrix(with(data=data, eval(Gname)))
-    E = as.matrix(with(data=data, eval(Ename)))
-  } else {  # if no data.frame was supplied, set data to the environment of formula (typically globalenv())
+  ## If no data.frame was supplied, set data to the environment of formula (typically globalenv())
+  if(missing(data)) {
     data = environment(formula)
+  } else {                          # evaluate D, G, and E in data, if appropriate
+    if(class(data)=="matrix") {data = as.data.frame(data)}
+    D = with(data=data, eval(Dname))
+    G = with(data=data, eval(Gname))
+    E = with(data=data, eval(Ename))
   }
+
+  ## Expand factor variables into dummies, if present
+  if(class(G)=="factor") {G=model.matrix(~G)[,-1]}
+  if(class(E)=="factor") {E=model.matrix(~E)[,-1]}
 
   ## Save model frame
   model = model.frame(formula=formula, data=data)
@@ -136,7 +140,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   SE_asy = sqrt(diag(Lambda)/n)
 
   ## Compile results into a list.  If we're swapping G & E, change back now
-  spmle_est = list(par   = spmle_max$par[swap_order],
+  spmle_est = list(coefficients = spmle_max$par[swap_order],
                    SE    = SE_asy[swap_order],
                    cov   = Lambda[swap_order,swap_order]/n,
                    H_inv = H_inv[swap_order,swap_order],

@@ -26,6 +26,10 @@ grad_fn = function(Omega, D, G, E, pi1) return(get(x="grad_val", pos=parent.fram
 
 ## Calculate the SPMLE (optionally precondition with hessian)
 maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
+  ## Convert G, and E to matrices (if not already)
+  G = as.matrix(G)
+  E = as.matrix(E)
+
   ## Set control parameters for SPMLE estimation
   con = list(trace=0, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
@@ -63,7 +67,82 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
   return(spmle_max)
 }
 
-## Calculate asymptotic SE for SPMLE
+
+#' Semiparametric Maximum Pseudolieklihood Estimator for case-control studies under G-E independence.
+#'
+#' \code{spmle} maximizes the retrospective pseudolikelihood of case-control data under the assumption of G-E independence.
+#' The marginal distributions of G and E are treated nonparametrically.
+#'
+#' This function applies the method of Stalder et. al. (2017) to maximize the
+#' retrospective pseudolikelihood of case-control data under the assumption of G-E independence.
+#' It currently supports the model with G and E main effects, and a multiplicative G*E interaction.
+#'
+#'
+#'
+#'
+#' \code{spmle} uses the optimization algorithm UCMINF from the ucminf package.
+#' When ucminf works, it works brilliantly (typically more than twice as fast
+#' as the next-fastest algorithm).  But it has a nasty habit of declaring
+#' convergence before actually converging.
+#' max_grad_tol = maximum allowable gradient
+#' num_retries = number of times to retry optimization
+#'
+#' Omega_start is the starting value for optimization and invhessian.lt is the lower triangle of the inverse hessian
+#' , and will restart with different starting values
+#' if it does not converge.  If the algorithm does not converge after repeated attempts with different
+#' starting values, \code{spmle} will fail and produce an error.
+#'
+#'
+#'
+#'
+#' @param D a binary vector of disease status (1=case, 0=control).
+#' @param G a vector or matrix (if multivariate) containing genetic data. Can be continuous, discrete, or a combination.
+#' @param E a vector or matrix (if multivariate) containing environmental data. Can be continuous, discrete, or a combination.
+#' @param pi1 the population disease rate, a scalar in [0, 1).  Using \code{pi1=0} is the rare disease approximation.
+#' @param control a list of control parameters that allow the user to control the optimization algorithm.  See
+#'  \code{nboot} is the number of bootstrap samples to be used when calculating the bootstrap SE.  Setting \code{nboot=0},
+#'  the default, will skip the bootstrap and calculate only asymptotic SE.
+#'  \code{trace} is a scalar or logical value.  If TRUE or >0, tracing information is produced.  Default \code{trace=0}.
+#'  \code{usehess} is a logical value.  If TRUE (the default), the analytic hessian is used to precondition the optimization using UCMINF.
+#' @param swap a logical scalar - rarely of interest to the end user.  Dependence on the distributions of G and E are removed using
+#'   different methods; this switch swaps them to produce a symmetric estimator with identical properties to the SPMLE.  Default \code{FALSE}.
+#' @param startvals a numeric vector of coefficient starting values for optimization.  When
+#'
+#' @return If \code{control$nboot=0}, a matrix with two rows: the coefficient estimites and the asymptotic SE.
+#'  If \code{control$nboot>0} the matrix will have a third row with the bootstrap SE.
+#' @seealso \code{\link{simulate_complex}} to simulate data
+#' @examples
+#' # Simulation from Table 1 in Stalder et. al. (2017)
+#' dat = simulate_complex(ncase=1000,
+#'                        ncontrol=1000,
+#'                        beta0=-4.14,
+#'                        betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
+#'                        betaE_bin=log(1.5),
+#'                        betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
+#'                        MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
+#'                        SNP_cor=0.7,
+#'                        E_bin_freq=0.5)
+#'
+#' # SPMLE with known population disease rate of 0.03
+#' spmle(D=dat$D, G=dat$G, E=dat$E, pi1=0.03)
+#'
+#' # Simulation with a single SNP and a single binary environmental variable.
+#' # True population disease rate in this simulation is 0.03.
+#' # This simulation scenario was used in the Supplementary Material of Stalder et. al. (2017)
+#' # to compare performance against the less flexible method of Chatterjee and Carroll (2005),
+#' # which is available as the function as snp.logistic in the Bioconductor package CGEN.
+#' dat = simulate_complex(ncase=100,
+#'                        ncontrol=100,
+#'                        beta0=-3.77,
+#'                        betaG_SNP=log(1.2),
+#'                        betaE_bin=log(1.5),
+#'                        betaGE_SNP_bin=log(1.3),
+#'                        MAF=0.1)
+#'
+#' # SPMLE using the rare disease assumption
+#' #and with bootstrap SE, no tracing, and no hessian preconditioning.
+#' spmle(D=dat$D, G=dat$G, E=dat$E, pi1=0, control=list(nboot=100, trace=0, usehess=FALSE))
+#' @export
 spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   ## Store the function call
   cl = match.call()
@@ -78,15 +157,19 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   formula = formula(paste(as.character(as.expression(Dname)), "~", as.character(as.expression(Gname)), "*", as.character(as.expression(Ename))))
   attr(formula, ".Environment") = parent.env(environment(formula))
 
-  ## Evaluate D, G, and E in data, if appropriate
-  if(!missing(data)) {
-    if(class(data)=="matrix") {data = as.data.frame(data)}
-    D = as.matrix(with(data=data, eval(Dname)))
-    G = as.matrix(with(data=data, eval(Gname)))
-    E = as.matrix(with(data=data, eval(Ename)))
-  } else {  # if no data.frame was supplied, set data to the environment of formula (typically globalenv())
+  ## If no data.frame was supplied, set data to the environment of formula (typically globalenv())
+  if(missing(data)) {
     data = environment(formula)
+  } else {                          # evaluate D, G, and E in data, if appropriate
+    if(class(data)=="matrix") {data = as.data.frame(data)}
+    D = with(data=data, eval(Dname))
+    G = with(data=data, eval(Gname))
+    E = with(data=data, eval(Ename))
   }
+
+  ## Expand factor variables into dummies, if present
+  if(class(G)=="factor") {G=model.matrix(~G)[,-1]}
+  if(class(E)=="factor") {E=model.matrix(~E)[,-1]}
 
   ## Save model frame
   model = model.frame(formula=formula, data=data)
