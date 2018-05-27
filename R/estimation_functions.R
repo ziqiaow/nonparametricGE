@@ -110,7 +110,7 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 #' @param D a binary vector of disease status (1=case, 0=control).
 #' @param G a vector or matrix (if multivariate) containing genetic data. Can be continuous, discrete, or a combination.
 #' @param E a vector or matrix (if multivariate) containing environmental data. Can be continuous, discrete, or a combination.
-#' @param pi1 the population disease rate, a scalar in [0, 1).  Using \code{pi1=0} is the rare disease approximation.
+#' @param pi1 the population disease rate, a scalar in [0, 1) or the string "rare".  Using \code{pi1=0} is the rare disease approximation.
 #' @param data an optional data frame, list, or environment (or object coercible by \code{\link[base]{as.data.frame}}
 #'   to a data frame) containing the variables in the model.  If not found in data, the variables are taken from
 #'   the environment from which \code{spmle} is called.
@@ -163,6 +163,10 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   Gname = substitute(G)
   Ename = substitute(E)
 
+  ## If pi1 (partially) matches "rare", set pi1=0
+  if(pmatch(x=substr(x=tolower(pi1), start=1, stop=4), table="rare", nomatch=FALSE)) {pi1=0}
+  stopifnot(pi1>=0, pi1<1)  # throw an error if pi1 not in [0,1)
+
   ## Store the formula with user-provided variable names.  For consistency with estimators that accept formulas (like lm),
   ## set the formula environment to the calling environment (as if formula had been an argument).
   formula = formula(paste(as.character(as.expression(Dname)), "~", as.character(as.expression(Gname)), "*", as.character(as.expression(Ename))))
@@ -186,9 +190,12 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   model_frame = model.frame(formula=formula, data=data)
   model_matrix = model.matrix(formula, model_frame)
 
+  ## Fit the model with logistic regression
+  logistic_fit = glm(formula, family=binomial(link='logit'), data=data)
+
   ## If starting values weren't provided, use logistic regression estimates
   if(missing(startvals)) {
-    Omega_start = coef(glm(formula, family=binomial(link='logit'), data=data))
+    Omega_start = coef(logistic_fit)
   } else {
     Omega_start = startvals
   }
@@ -207,6 +214,9 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   G = as.matrix(G)
   E = as.matrix(E)
 
+  ## Model degrees of freedom
+  df_model = length(Omega_start)
+
   ## If we're swapping G & E, make the change now
   if(swap==TRUE) {
     nG = NCOL(G)
@@ -221,7 +231,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   }
 
   ## Precondition with hessian if requested
-  if(con$use_hess==TRUE) {con$invhessian.lt = solve(neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1))[lower.tri(diag(length(Omega_start)),diag=TRUE)]}
+  if(con$use_hess==TRUE) {con$invhessian.lt = solve(neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1))[lower.tri(diag(df_model),diag=TRUE)]}
 
   ## Calculate SPMLE for a given disease rate
   spmle_max = maximize_spmle(Omega_start=Omega_start[swap_order], D=D, G=G, E=E, pi1=pi1, control=con)
@@ -237,9 +247,20 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   linear_predictors = model_matrix %*% spmle_max$par  # logistic scale
   fitted_values = plogis(q=linear_predictors)         # probability scale
 
-  ## Deviance residuals and total deviance
+  ## Deviance residuals, total deviance, and df resid & null
   deviance_resid = -2*log(abs(1-D-fitted_values))
   total_deviance = sum(deviance_resid)
+  df_resid = n - df_model
+  null_deviance = sum(-2*log(abs(1-D-mean(D))))
+  df_null = n - 1
+
+  ## Loglikelihood, AIC, and BIC
+  loglik = -spmle_max$value
+  attr(loglik, "nobs") = n
+  attr(loglik, "df") = df_model
+  class(loglik) = "logLik"
+  AIC = 2*df_model - 2*loglik
+  BIC = log(n) * df_model - 2*loglik
 
   ## Compile results into a list.  Use glm-object naming conventions.  If we swapped G & E, change back now
   spmle_est = list(coefficients = spmle_max$par[reverse_swap_order],
@@ -258,10 +279,19 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
                    fitted.values = fitted_values,
                    residuals = deviance_resid,
                    deviance = total_deviance,
-                   aic = NA)
+                   null.deviance = null_deviance,
+                   df.residual = df_resid,
+                   df.null = df_null,
+                   df.model = df_model,
+                   aic = AIC,
+                   bic = BIC,
+                   logLik = loglik,
+                   nobs = n,
+                   ncase = ncase,
+                   ncontrol = ncontrol)
 
-  ## Return an object of class spmle, which inherits from glm and lm
-  class(spmle_est) = c("spmle")#, "glm", "lm")
+  ## Return an object of class spmle
+  class(spmle_est) = c("spmle")
   return(spmle_est)
 }
 

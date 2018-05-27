@@ -13,7 +13,7 @@ spmle(D, G, E, pi1, data, control = list(), swap = FALSE, startvals)
 
 \item{E}{a vector or matrix (if multivariate) containing environmental data. Can be continuous, discrete, or a combination.}
 
-\item{pi1}{the population disease rate, a scalar in [0, 1).  Using \code{pi1=0} is the rare disease approximation.}
+\item{pi1}{the population disease rate, a scalar in [0, 1) or the string "rare".  Using \code{pi1=0} is the rare disease approximation.}
 
 \item{data}{an optional data frame, list, or environment (or object coercible by \code{\link[base]{as.data.frame}}
 to a data frame) containing the variables in the model.  If not found in data, the variables are taken from
