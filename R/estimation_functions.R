@@ -40,6 +40,10 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
   ## Optimize with ucminf
   spmle_max = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
 
+  ## Save the retry number and starting values
+  spmle_max$start_vals = Omega_start
+  spmle_max$retry = 0
+
   ## Check for convergance and rerun optimization if necessary
   if(!is.finite(spmle_max$info[1]) | spmle_max$info[1]>con$max_grad_tol) {
     ## Scale starting values by 1/SD
@@ -52,10 +56,17 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
       ## If failure happened when preconditioning with the hessian, try without (same start values the first time)
       if(!is.null(ucminf_con$invhessian.lt)) {
         ucminf_con$invhessian.lt = NULL
-        spmle_max = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
+        new_start = Omega_start
       } else {  # otherwise use scaled normal startvals (preserve names from Omega_start)
-        spmle_max = ucminf::ucminf(par=setNames(rnorm(n=length(Omega_start), sd=scale_vec), names(Omega_start)), fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
+        new_start = setNames(rnorm(n=length(Omega_start), sd=scale_vec), names(Omega_start))
       }
+
+      ## Rerun optimization with new values
+      spmle_max = ucminf::ucminf(par=new_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
+
+      ## Save the retry number and starting values
+      spmle_max$start_vals = new_start
+      spmle_max$retry = j
 
       ## Break out of the loop once we have convergence
       if(is.finite(spmle_max$info[1]) & spmle_max$info[1]<con$max_grad_tol) {break}
@@ -248,8 +259,8 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   fitted_values = plogis(q=linear_predictors)         # probability scale
 
   ## Deviance residuals, total deviance, and df resid & null
-  deviance_resid = -2*log(abs(1-D-fitted_values))
-  total_deviance = sum(deviance_resid)
+  deviance_resid = sqrt(-2*log(abs(1-D-fitted_values))) * sign(D-0.5)
+  total_deviance = sum(deviance_resid^2)
   df_resid = n - df_model
   null_deviance = sum(-2*log(abs(1-D-mean(D))))
   df_null = n - 1
@@ -263,32 +274,33 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   BIC = log(n) * df_model - 2*loglik
 
   ## Compile results into a list.  Use glm-object naming conventions.  If we swapped G & E, change back now
-  spmle_est = list(coefficients = spmle_max$par[reverse_swap_order],
-                   SE    = SE_asy[reverse_swap_order],
-                   cov   = Lambda[reverse_swap_order,reverse_swap_order]/n,
-                   H_inv = H_inv[reverse_swap_order,reverse_swap_order],
-                   Sigma = Sigma[reverse_swap_order,reverse_swap_order],
-                   zeta0 = hess_zeta$zeta0[, reverse_swap_order],
-                   zeta1 = hess_zeta$zeta1[, reverse_swap_order],
-                   ucminf = spmle_max,
-                   call  = cl,
-                   formula = formula,
-                   data = data,
-                   model = model_frame,
+  spmle_est = list(coefficients      = spmle_max$par[reverse_swap_order],
+                   SE                = SE_asy[reverse_swap_order],
+                   cov               = Lambda[reverse_swap_order,reverse_swap_order]/n,
+                   H_inv             = H_inv[reverse_swap_order,reverse_swap_order],
+                   Sigma             = Sigma[reverse_swap_order,reverse_swap_order],
+                   zeta0             = hess_zeta$zeta0[, reverse_swap_order],
+                   zeta1             = hess_zeta$zeta1[, reverse_swap_order],
+                   ucminf            = spmle_max,
+                   glm_fit           = logistic_fit,
+                   call              = cl,
+                   formula           = formula,
+                   data              = data,
+                   model             = model_frame,
                    linear.predictors = linear_predictors,
-                   fitted.values = fitted_values,
-                   residuals = deviance_resid,
-                   deviance = total_deviance,
-                   null.deviance = null_deviance,
-                   df.residual = df_resid,
-                   df.null = df_null,
-                   df.model = df_model,
-                   aic = AIC,
-                   bic = BIC,
-                   logLik = loglik,
-                   nobs = n,
-                   ncase = ncase,
-                   ncontrol = ncontrol)
+                   fitted.values     = fitted_values,
+                   residuals         = deviance_resid,
+                   deviance          = total_deviance,
+                   null.deviance     = null_deviance,
+                   df.residual       = df_resid,
+                   df.null           = df_null,
+                   rank              = df_model,
+                   aic               = AIC,
+                   bic               = BIC,
+                   logLik            = loglik,
+                   nobs              = n,
+                   ncase             = ncase,
+                   ncontrol          = ncontrol)
 
   ## Return an object of class spmle
   class(spmle_est) = c("spmle")

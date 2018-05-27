@@ -687,18 +687,12 @@ function (object, dispersion = NULL, correlation = FALSE, symbolic.cor = FALSE,
 {
     est.disp <- FALSE
     df.r <- object$df.residual
-    if (is.null(dispersion))
-        dispersion <- if (object$family$family %in% c("poisson",
-            "binomial"))
-            1
-        else if (df.r > 0) {
+    if (is.null(dispersion)) {dispersion <- if (object$family$family %in% c("poisson", "binomial")) 1
+        } else if (df.r > 0) {
             est.disp <- TRUE
-            if (any(object$weights == 0))
-                warning("observations with zero weight not used for calculating dispersion")
-            sum((object$weights * object$residuals^2)[object$weights >
-                0])/df.r
-        }
-        else {
+            if (any(object$weights == 0)) warning("observations with zero weight not used for calculating dispersion")
+            sum((object$weights * object$residuals^2)[object$weights >0])/df.r
+        } else {
             est.disp <- TRUE
             NaN
         }
@@ -706,7 +700,7 @@ function (object, dispersion = NULL, correlation = FALSE, symbolic.cor = FALSE,
     p <- object$rank
     if (p > 0) {
         p1 <- 1L:p
-        Qr <- qr.lm(object)
+        Qr <- stats:::qr.lm(object)
         coef.p <- object$coefficients[Qr$pivot[p1]]
         covmat.unscaled <- chol2inv(Qr$qr[p1, p1, drop = FALSE])
         dimnames(covmat.unscaled) <- list(names(coef.p), names(coef.p))
