@@ -1,3 +1,31 @@
+
+
+#' @param control a list of control parameters.
+#'     \code{nboot} number of bootstraps.  Default \code{0}.
+#'     \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
+#'     \code{usehess} logical: precondition optimization with the hessian.  Default \code{TRUE}.
+#'     \code{useseed} logical: use the simulation number as the seed.  Default \code{TRUE}.
+#' @param pi1 pipulation disease rate
+#' @param ncase,ncontrol number of cases and controls
+#' @param beta0 logistic intercept
+#' @param betaG_SNP,betaG_normPRS,betaG_gammaPRS,betaG_bimodalPRS coefficients for genetic variables
+#' @param betaE_bin,betaE_norm coefficients for environmental variables
+#' @param betaGE_SNP_bin,betaGE_normPRS_bin,betaGE_gammaPRS_bin,betaGE_bimodalPRS_bin,betaGE_SNP_norm,betaGE_normPRS_norm,betaGE_gammaPRS_norm,betaGE_bimodalPRS_norm coefficients for G-E interactions
+#' @param MAF Minor Allele Frequency
+#' @param SNP_cor correlation between successive SNPs
+#' @param G_normPRS_cor correlation between multivariate normal genetic PRS variables
+#' @param E_bin_freq frequency of E=1 for binary environmental variables
+#' @param E_norm_cor correlation between multivariate normal environmental variables
+#' @param regress_E_bin_on_G_SNP,regress_E_bin_on_G_normPRS,regress_E_bin_on_G_gammaPRS,regress_E_bin_on_G_bimodalPRS,regress_E_norm_on_G_SNP,regress_E_norm_on_G_normPRS,regress_E_norm_on_G_gammaPRS,regress_E_norm_on_G_bimodalPRS  to violate the G-E independence assumption
+#'
+#' @return A named row vector of estimates and SEs
+#' @export
+
+
+
+
+
+
 #' Simulate case-control data with multivariate, possibly dependent genetic and environmental components.
 #'
 #' \code{simulate_complex} simulates data to be analyzed by \code{symple}, logistic regression, or other models.
@@ -385,3 +413,21 @@ simulate_complex = function(ncase, ncontrol, beta0,
   dat = list(D=D, G=G, E=E)
   return(dat)
 }
+
+
+#' Checks whether a variable exists (in the current environment) and is not NULL
+#'
+#' @param varname variable name
+#'
+#' @return TRUE or FALSE
+#' @export
+enn = function(varname) {
+  ## If called from the glovbal environment, look there
+  if(identical(parent.frame(), globalenv())){
+    if(exists(as.character(substitute(varname)))) {if(!is.null(varname)) {return(TRUE)}}
+  } else {
+    if(eval(!missing(varname))) {if(!is.null(varname)) {return(TRUE)}}
+  }
+  return(FALSE)
+}
+
