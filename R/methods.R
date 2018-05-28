@@ -2,14 +2,34 @@
 
 
 ## Return the loglikelihood of spmle objects
+#' @export
 logLik.spmle = function(x) x$logLik
 
 
 ## Print spmle objects
-print.spmle = function(x, ...) stats:::print.glm(x, ...)
+#' @export
+print.spmle = function(x, digits=max(3L, getOption("digits") - 3L), ...) {
+  cat("\nCall:  ", paste(deparse(x$call), sep = "\n", collapse = "\n"), "\n\n", sep = "")
+  if(length(coef(x))) {
+    cat("Coefficients")
+    if(is.character(co <- x$contrasts)) {
+      cat("  [contrasts: ", apply(cbind(names(co), co), 1L, paste, collapse = "="), "]")
+    }
+    cat(":\n")
+    print.default(format(x$coefficients, digits = digits), print.gap = 2, quote = FALSE)
+  } else {cat("No coefficients\n\n")}
+  cat("\nDegrees of Freedom:", x$df.null, "Total (i.e. Null); ", x$df.residual, "Residual\n")
+  if(nzchar(mess <- naprint(x$na.action))) {cat("  (", mess, ")\n", sep = "")}
+  if(!is.null(x$deviance)) {
+    cat("Null Deviance:\t   ", format(signif(x$null.deviance, digits)), "\nResidual Deviance:", format(signif(x$deviance, digits)), "\tAIC:", format(signif(x$aic, digits)))
+    cat("\n")
+  }
+  invisible(x)
+}
 
 
 ## Summarize spmle objects (similar to summary.glm)
+#' @export
 summary.spmle = function (object, correlation = FALSE, symbolic.cor = FALSE, ...) {
   df.r = object$df.residual
   aliased = is.na(coef(object))
@@ -49,6 +69,7 @@ summary.spmle = function (object, correlation = FALSE, symbolic.cor = FALSE, ...
 
 
 ## Print summary of spmle objects (similar to print.summary.glm)
+#' @export
 print.summary.spmle = function (x, digits = max(3L, getOption("digits") - 3L), symbolic.cor = x$symbolic.cor,
                                 signif.stars = getOption("show.signif.stars"), ...) {
   cat("\nCall:\n", paste(deparse(x$call), sep = "\n", collapse = "\n"), "\n\n", sep = "")
@@ -76,10 +97,14 @@ print.summary.spmle = function (x, digits = max(3L, getOption("digits") - 3L), s
     }
     printCoefmat(coefs, digits = digits, signif.stars = signif.stars, na.print = "NA", ...)
   }
-  cat("\n", apply(cbind(paste(format(c("Null", "Residual"), justify = "right"), "deviance:"), format(unlist(x[c("null.deviance", "deviance")]), digits = max(5L, digits + 1L)), " on", format(unlist(x[c("df.null", "df.residual")])), " degrees of freedom\n"), 1L, paste, collapse = " "), sep = "")
-  if (nzchar(mess <- naprint(x$na.action))) {cat("  (", mess, ")\n", sep = "")}
-  cat("AIC:", format(x$aic, digits = max(4L, digits + 1L)), "\n")
-  cat("UCMINF retries: ", x$retry$retries, ", iterations: ", x$iter[1], ", max gradient at convergence: ", format(x$iter[2], digits=max(5L, digits + 1L)), sep="")
+
+  if(!is.null(x$deviance)){
+    cat("\n", apply(cbind(paste(format(c("Null", "Residual"), justify = "right"), "deviance:"), format(unlist(x[c("null.deviance", "deviance")]), digits = max(5L, digits + 1L)), " on", format(unlist(x[c("df.null", "df.residual")])), " degrees of freedom\n"), 1L, paste, collapse = " "), sep = "")
+    if (nzchar(mess <- naprint(x$na.action))) {cat("  (", mess, ")\n", sep = "")}
+    cat("AIC:", format(x$aic, digits = max(4L, digits + 1L)), "\n")
+    cat("UCMINF retries: ", x$retry$retries, ", iterations: ", x$iter[1], ", max gradient at convergence: ", format(x$iter[2], digits=max(5L, digits + 1L)), sep="")
+  }
+
   correl = x$correlation
   if (!is.null(correl)) {
     p = NCOL(correl)
@@ -100,7 +125,11 @@ print.summary.spmle = function (x, digits = max(3L, getOption("digits") - 3L), s
 
 
 ## Calculate anova tables for spmle objects
+#' @export
 anova.spmle = function(object, ...) {
+  ## If there's no loglikelihood, just print the object
+  if(is.null(logLik(object))) {return(object)}
+
   ## If called on a single model, compare to the null model
   if(length(list(object, ...)) == 1L) {
     nullLik = -0.5*object$null.deviance
@@ -113,7 +142,7 @@ anova.spmle = function(object, ...) {
   objects = list(object, ...)
   nmodels = length(objects)
   ns = sapply(objects, nobs)
-  if (any(ns != ns[1])) {stop("models were not all fitted to the same size of dataset")}
+  if(any(ns != ns[1])) {stop("models were not all fitted to the same size of dataset")}
 
   rval = matrix(rep(NA, 5 * nmodels), ncol = 5)
   colnames(rval) = c("#Df", "LogLik", "Df", "Chisq", "Pr(>Chisq)")
@@ -132,6 +161,7 @@ anova.spmle = function(object, ...) {
 
 
 ## Plot spmle objects
+#' @export
 plot.spmle = function(x, ...) {
   resids = residuals(x)
   preds = fitted(x)
@@ -144,10 +174,12 @@ plot.spmle = function(x, ...) {
 
 
 ## Return covariance matrix
+#' @export
 vcov.spmle = function (object, ...) summary.spmle(object, ...)$cov.scaled
 
 
 ##  Calculate confidence intervals
+#' @export
 confint.spmle = function(object, parm, level=0.95, ...) {
   if(level>=1 & level<100) {level=level/100}
   stopifnot(0<level, level<1)
@@ -169,6 +201,12 @@ confint.spmle = function(object, parm, level=0.95, ...) {
   return(CI)
 }
 
+
+## Extract model objects
+#' @export
+model.matrix.spmle = function(object, ...){
+  model.matrix.lm(object$formula, object$model)
+}
 
 #' Predict method for spmle objects
 #'

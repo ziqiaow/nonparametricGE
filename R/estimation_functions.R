@@ -45,7 +45,7 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
   spmle_max$retry = 0
 
   ## Check for convergance and rerun optimization if necessary
-  if(!is.finite(spmle_max$info[1]) | spmle_max$info[1]>con$max_grad_tol) {
+  if(spmle_max$convergence<1 || !is.finite(spmle_max$info[1]) || spmle_max$info[1]>con$max_grad_tol) {
     ## Scale starting values by 1/SD
     scale_vec = 1/c(1, apply(model.matrix(~0+G*E), 2, sd))
 
@@ -257,8 +257,8 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   hess_zeta = hesszeta(Omega=spmle_max$par, D=D, G=G, E=E, pi1=pi1)
   Sigma = ((ncontrol-1)*cov(hess_zeta$zeta0) + (ncase-1)*cov(hess_zeta$zeta1))/n  # (ncontrol-1) to correct denominator because cov uses the "sample covariance matrix" denominator of n-1
   H_inv = -n*solve(hess_zeta$hessian)    # = (-hessian/n)^-1 = (Gamma_1 - Gamma_2)^-1
-  Lambda = H_inv %*% Sigma %*% t(H_inv)  # covar matrix of sqrt(n) * OmegaHat
-  SE_asy = sqrt(diag(Lambda)/n)
+  Lambda = H_inv %*% Sigma %*% t(H_inv) / n  # covar matrix of OmegaHat
+  SE_asy = sqrt(diag(Lambda))
 
   ## Calculate predictions
   linear_predictors = model_matrix %*% spmle_max$par  # logistic scale
@@ -283,7 +283,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   spmle_est = list(coefficients      = spmle_max$par[reverse_swap_order],
                    pi1               = pi1,
                    SE                = SE_asy[reverse_swap_order],
-                   cov               = Lambda[reverse_swap_order,reverse_swap_order]/n,
+                   cov               = Lambda[reverse_swap_order,reverse_swap_order],
                    H_inv             = H_inv[reverse_swap_order,reverse_swap_order],
                    Sigma             = Sigma[reverse_swap_order,reverse_swap_order],
                    zeta0             = hess_zeta$zeta0[, reverse_swap_order],
@@ -331,10 +331,66 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
 #' @return A list with a matrix of estimates and SEs and a bunch of other stuff
 #' @seealso \code{\link{simulate_complex}} to simulate data
 #' @export
-combo_asymp = function(D, G, E, pi1, control=list()){
+combo_spmle = function(D, G, E, pi1, data, nboot=50, ncores=1, control=list(), startvals){
+  if(nboot==0) {warning("nboot=0, using asymptotic standard error estimate, which has poor coverage properties")}
+
+  ## Store the function call
+  cl = match.call()
+
+  ## Get argument names for D, G, and E
+  Dname = substitute(D)
+  Gname = substitute(G)
+  Ename = substitute(E)
+
+  ## If pi1 (partially) matches "rare", set pi1=0
+  if(pmatch(x=substr(x=tolower(pi1), start=1, stop=4), table="rare", nomatch=FALSE)) {pi1=0}
+  stopifnot(pi1>=0, pi1<1)  # throw an error if pi1 not in [0,1)
+
+  ## Store the formula with user-provided variable names.  For consistency with estimators that accept formulas (like lm),
+  ## set the formula environment to the calling environment (as if formula had been an argument).
+  formula = formula(paste(as.character(as.expression(Dname)), "~", as.character(as.expression(Gname)), "*", as.character(as.expression(Ename))))
+  attr(formula, ".Environment") = parent.frame()
+
+  ## If no data.frame was supplied, set data to the calling environment
+  if(missing(data)) {
+    data = environment(formula)
+  } else {                          # evaluate D, G, and E in data, if appropriate
+    if(class(data)=="matrix") {data = as.data.frame(data)}
+    D = with(data=data, eval(Dname))
+    G = with(data=data, eval(Gname))
+    E = with(data=data, eval(Ename))
+  }
+
+  ## Expand factor variables into dummies, if present
+  if(class(G)=="factor") {G=model.matrix(~G)[,-1]}
+  if(class(E)=="factor") {E=model.matrix(~E)[,-1]}
+
+  ## Create model.frame (response, no interactions) and model.matrix (all predictors, including interactions)
+  model_frame = model.frame(formula=formula, data=data)
+  model_matrix = model.matrix(formula, model_frame)
+
+  ## Fit the model with logistic regression
+  logistic_fit = glm(formula, family=binomial(link='logit'), data=data)
+
+  ## If starting values weren't provided, use logistic regression estimates
+  if(missing(startvals)) {
+    Omega_start = coef(logistic_fit)
+  } else {
+    Omega_start = startvals
+  }
+
+  ## If user-provided startval lacked names, add them
+  if(is.null(names(Omega_start))) {names(Omega_start) = colnames(model_matrix)}
+
   ## Set control parameters
-  con = list(nboot=0, trace=0, use_hess=TRUE)
+  con = list(trace=0, use_hess=TRUE, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
+
+  ## Remove missing values and convert G and E to matrices
+  complete = complete.cases(D, G, E)
+  D = D[complete]
+  G = as.matrix(as.matrix(G)[complete,])
+  E = as.matrix(as.matrix(E)[complete,])
 
   ## Sizes of arrays
   n = length(D)
@@ -343,181 +399,209 @@ combo_asymp = function(D, G, E, pi1, control=list()){
   G = as.matrix(G)
   E = as.matrix(E)
 
-  ## Use Logistic estimates as starting values
-  logistic_fit = glm(D~G*E, family=binomial(link='logit'))
-  logistic_est = t(coef(summary(logistic_fit))[,c(1,2)])
-  Omega_start  = logistic_est[1,]
-  length_Omega = length(Omega_start)
+  ## Model degrees of freedom
+  df_model = length(Omega_start)
 
   ##### Treat G & E as in Stalder et al. 2017
-  spmle_G_asy = spmle(startvals=Omega_start, D=D, G=G, E=E, pi1=pi1, swap=FALSE, control=con)
+  spmle_E = spmle(D=D, G=G, E=E, pi1=pi1, data=data, control=con, swap=FALSE, startvals=Omega_start)
   ##### Swap G & E
-  spmle_E_asy = spmle(startvals=Omega_start, D=D, G=G, E=E, pi1=pi1, swap=TRUE, control=con)
+  spmle_G = spmle(D=D, G=G, E=E, pi1=pi1, data=data, control=con, swap=TRUE, startvals=Omega_start)
 
   ## Define matrices
-  Omega_all = c(spmle_G_asy$coefficients, spmle_E_asy$coefficients)
-  X_mat = rbind(diag(length_Omega), diag(length_Omega))
-  zero_mat = matrix(0, nrow=length_Omega, ncol=length_Omega)
+  Omega_all = c(spmle_E$coefficients, spmle_G$coefficients)
+  X_mat = rbind(diag(df_model), diag(df_model))
+  zero_mat = matrix(0, nrow=df_model, ncol=df_model)
 
   ## Block diagonal with both inverse hessians
-  H_all = -rbind(cbind(spmle_G_asy$H_inv,zero_mat), cbind(zero_mat,spmle_E_asy$H_inv))
+  H_all = -rbind(cbind(spmle_E$H_inv,zero_mat), cbind(zero_mat,spmle_G$H_inv))
 
   ## Sigma block matrix
-  Sigma_GG  = spmle_G_asy$Sigma
-  Sigma_EE  = spmle_E_asy$Sigma
-  Sigma_GE  = ((ncontrol-1)*cov(spmle_G_asy$zeta0, spmle_E_asy$zeta0) + (ncase-1)*cov(spmle_G_asy$zeta1, spmle_E_asy$zeta1))/n
-  Sigma_EG  = t(Sigma_GE)
-  Sigma_all = rbind(cbind(Sigma_GG,Sigma_GE),cbind(Sigma_EG,Sigma_EE))
+  Sigma_EE  = spmle_E$Sigma
+  Sigma_GG  = spmle_G$Sigma
+  Sigma_EG  = ((ncontrol-1)*cov(spmle_E$zeta0, spmle_G$zeta0) + (ncase-1)*cov(spmle_E$zeta1, spmle_G$zeta1))/n
+  Sigma_GE  = t(Sigma_EG)
+  Sigma_all = rbind(cbind(Sigma_EE,Sigma_EG),cbind(Sigma_GE,Sigma_GG))
 
   ## Lambda (asymptotic covariance) matrix
   Lambda_all = H_all %*% Sigma_all %*% t(H_all)
   Lambda_all_inv = solve(Lambda_all)
 
-  ## Covariance matrix of optimum combination
+  ## Asymptotic covariance matrix of optimum combination
   Lambda_combo = solve(t(X_mat) %*% Lambda_all_inv %*% X_mat)
-  combo_SE = sqrt(diag(Lambda_combo)/n)
+  combo_asy_SE = sqrt(diag(Lambda_combo)/n)
+  names(combo_asy_SE) = names(Omega_start)
+
+  ## Optimum combination
+  combo_par = as.vector(Lambda_combo %*% t(X_mat) %*% Lambda_all_inv %*% Omega_all)
+  names(combo_par) = names(Omega_start)
+
+  ## Calculate predictions
+  linear_predictors = model_matrix %*% combo_par      # logistic scale
+  fitted_values = plogis(q=linear_predictors)         # probability scale
+
+  ## Pearson residuals, total deviance, and df resid & null
+  pearson_resid = (D-fitted_values) / sqrt(fitted_values*(1-fitted_values))
+  df_resid = n - df_model
+  null_deviance = sum(-2*log(abs(1-D-mean(D))))
+  df_null = n - 1
+
+  ## Compile asymptotic results into a list.  Use glm-object naming conventions.
+  combo_est = list(coefficients      = combo_par,
+                   pi1               = pi1,
+                   SE                = combo_asy_SE,
+                   cov               = Lambda_combo/n,
+                   spmle_E           = spmle_E,
+                   spmle_G           = spmle_G,
+                   glm_fit           = logistic_fit,
+                   call              = cl,
+                   formula           = formula,
+                   data              = data,
+                   model             = model_frame,
+                   terms             = attr(model_frame, "terms"),
+                   linear.predictors = linear_predictors,
+                   fitted.values     = fitted_values,
+                   residuals         = pearson_resid,
+                   null.deviance     = null_deviance,
+                   df.residual       = df_resid,
+                   df.null           = df_null,
+                   rank              = df_model,
+                   nobs              = n,
+                   ncase             = ncase,
+                   ncontrol          = ncontrol)
+
+  ## Set class spmle_combo
+  class(combo_est) = c("spmle_combo", "spmle")
+
+  ## Calculate bootstrap SE if nboot > 0
+  if(nboot>0) {
+    if(con$trace>0) {cat("Begin bootstrap\n")}
+
+    ## Split the data into controls & cases for balanced resampling (same # of controls & cases in bootstraps as in original data)
+    dat_control = list(D=D[D==0], G=G[D==0,], E=E[D==0,])
+    dat_case = list(D=D[D==1], G=G[D==1,], E=E[D==1,])
+
+    ## Within cases & controls, we use a balanced bootstrap: good asymptotic properties, easy to parallelize
+    ## First create long lists of indices.  To create bootstrapped samples, read off this list of indices
+    index_control = sample(rep(1:ncontrol, nboot))
+    index_case = sample(rep(1:ncase, nboot))
+
+
+
+
+    if(ncores>1) {
+      ## Keep the user from specifying too many cores
+      ncores = min(ncores, parallel::detectCores(logical=FALSE))
+
+      ## Non-Windows operating systems can use mclapply with forking (faster)
+      if(Sys.info()[1]!="Windows"){
+        boot_ests = do.call(rbind, parallel::mclapply(X=seq_len(nboot), FUN=combo_boot, mc.cores=ncores,
+                                            index_control=index_control, index_case=index_case,
+                                            dat_control=dat_control, dat_case=dat_case, pi1=pi1,
+                                            ncontrol=ncontrol, ncase=ncase, con=con))
+      } else {
+        cl = parallel::makeCluster(ncores)
+        boot_ests = t(parallel::parSapply(cl=cl, X=seq_len(nboot), FUN=combo_boot,
+                                          index_control=index_control, index_case=index_case,
+                                          dat_control=dat_control, dat_case=dat_case, pi1=pi1,
+                                          ncontrol=ncontrol, ncase=ncase, con=con))
+        parallel::stopCluster(cl)
+      }
+    } else {
+      boot_ests = t(sapply(X=seq_len(nboot), FUN=combo_boot,
+                           index_control=index_control, index_case=index_case,
+                           dat_control=dat_control, dat_case=dat_case, pi1=pi1,
+                           ncontrol=ncontrol, ncase=ncase, con=con))
+    }
+    # if ("doParallel" %in% loadedNamespaces())
+
+    ## Calculate bootstrapped estimates (in parallel if ncores > 1)
+    # boot_ests = combo_boot(b, index_control=index_control, index_case=index_case, dat_control=dat_control, dat_case=dat_case, pi1=pi1, ncontrol=ncontrol, ncase=ncase, con=con)
+
+
+
+
+
+    ## Calculate bootstrap covariance matrix and SE
+    boot_cov = cov(boot_ests)
+    boot_SE = sqrt(diag(boot_cov))
+
+    ## Replace asymptotic covariance estimate with bootstrap
+    combo_est$SE         = boot_SE
+    combo_est$cov        = boot_cov
+    combo_est$bootstraps = boot_ests
+  }
+
+  ## Return fitted model
+  return(combo_est)
+}
+
+
+
+
+## Internal bootstrap function - can be called in parallel
+combo_boot = function(b, index_control, index_case, dat_control, dat_case, pi1, ncontrol, ncase, con) { # bootstrap function
+  if(con$trace>0) {cat("Bootstrap", b, "\n")}
+
+  ## Create bootstraped data set
+  D_boot = c(rep(0,ncontrol),rep(1,ncase))
+  G_boot = rbind(as.matrix(as.matrix(dat_control$G)[index_control[((b-1)*ncontrol+1):(b*ncontrol)],]), as.matrix(as.matrix(dat_case$G)[index_case[((b-1)*ncase+1):(b*ncase)],]))
+  E_boot = rbind(as.matrix(as.matrix(dat_control$E)[index_control[((b-1)*ncontrol+1):(b*ncontrol)],]), as.matrix(as.matrix(dat_case$E)[index_case[((b-1)*ncase+1):(b*ncase)],]))
+
+  ## Calculate both normal & swapped SPMLE with asymptotic SE
+  spmle_E = spmle(D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=FALSE, control=con)
+  spmle_G = spmle(D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=TRUE, control=con)
+
+  ## Define matrices
+  n = ncase + ncontrol
+  df_model = length(spmle_E$coefficients)
+  Omega_all = c(spmle_E$coefficients, spmle_G$coefficients)
+  X_mat = rbind(diag(df_model), diag(df_model))
+  zero_mat = matrix(0, nrow=df_model, ncol=df_model)
+
+  ## Block diagonal with both inverse hessians
+  H_all = -rbind(cbind(spmle_E$H_inv,zero_mat), cbind(zero_mat,spmle_G$H_inv))
+
+  ## Sigma block matrix
+  Sigma_EE  = spmle_E$Sigma
+  Sigma_GG  = spmle_G$Sigma
+  Sigma_EG  = ((ncontrol-1)*cov(spmle_E$zeta0, spmle_G$zeta0) + (ncase-1)*cov(spmle_E$zeta1, spmle_G$zeta1))/n
+  Sigma_GE  = t(Sigma_EG)
+  Sigma_all = rbind(cbind(Sigma_EE,Sigma_EG),cbind(Sigma_GE,Sigma_GG))
+
+  ## Lambda (asymptotic covariance) matrix
+  Lambda_all = H_all %*% Sigma_all %*% t(H_all)
+  Lambda_all_inv = solve(Lambda_all)
+
+  ## Asymptotic covariance matrix of optimum combination
+  Lambda_combo = solve(t(X_mat) %*% Lambda_all_inv %*% X_mat)
 
   ## Optimum combination
   combo_par = as.vector(Lambda_combo %*% t(X_mat) %*% Lambda_all_inv %*% Omega_all)
 
-  ## All seven estimates
-  asy_ests = rbind(logistic_est,
-                   spmle_G_asy$coefficients, spmle_G_asy$SE,
-                   spmle_E_asy$coefficients, spmle_E_asy$SE,
-                   combo_par, combo_SE
-                   )
-  rownames(asy_ests) = c("logistic_par", "logistic_SE",
-                         "spmle_G_par", "spmle_G_SE",
-                         "spmle_E_par", "spmle_E_SE",
-                         "combo_par", "combo_SE"
-                         )
-
-  ## Return estimates
-  return(list(ests              = asy_ests,
-  						Lambda_all        = Lambda_all,
-  						Sigma_GG          = Sigma_GG,
-  						Sigma_EE          = Sigma_EE,
-  						Sigma_GE          = Sigma_GE,
-  						Sigma_all         = Sigma_all,
-  						Lambda_combo      = Lambda_combo,
-  						spmle_G_asy_zeta0 = spmle_G_asy$zeta0,
-  						spmle_G_asy_zeta1 = spmle_G_asy$zeta1,
-  						spmle_E_asy_zeta0 = spmle_E_asy$zeta0,
-  						spmle_E_asy_zeta1 = spmle_E_asy$zeta1,
-  						spmle_G_asy_H     = spmle_G_asy$H,
-  						spmle_E_asy_H     = spmle_E_asy$H
-  ))
+  return(combo_par)
 }
 
-#' \code{nboot} is the number of bootstrap samples to be used when calculating the bootstrap SE.  Setting \code{nboot=0},
-#'  the default, will skip the bootstrap and calculate only asymptotic SE.
-#' Function to calculate bootstrapped SE for spmle_G & spmle_E estimates, as well as bootstrapped Combo estimate
-#'
-#' @param D a binary vector of disease status (1=case, 0=control).
-#' @param G a vector or matrix (if multivariate) containing genetic data. Can be continuous, discrete, or a combination.
-#' @param E a vector or matrix (if multivariate) containing environmental data. Can be continuous, discrete, or a combination.
-#' @param pi1 the population disease rate, a scalar in [0, 1).  Using \code{pi1=0} is the rare disease approximation.
+
+
 #' @param control a list of control parameters.
 #'     \code{nboot} number of bootstraps.  Default \code{0}.
 #'     \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
-#'     \code{use_hess} logical: precondition optimization with the hessian.  Default \code{FALSE}.
-#' @param spmle_G_par,spmle_E_par Parameter estimates generated from \code{\link{combo_asymp}}
-#' @return A list with a matrix of estimates and SEs and a bunch of other stuff
-#' @seealso \code{\link{simulate_complex}} to simulate data
+#'     \code{usehess} logical: precondition optimization with the hessian.  Default \code{TRUE}.
+#'     \code{useseed} logical: use the simulation number as the seed.  Default \code{TRUE}.
+#' @param pi1 pipulation disease rate
+#' @param ncase,ncontrol number of cases and controls
+#' @param beta0 logistic intercept
+#' @param betaG_SNP,betaG_normPRS,betaG_gammaPRS,betaG_bimodalPRS coefficients for genetic variables
+#' @param betaE_bin,betaE_norm coefficients for environmental variables
+#' @param betaGE_SNP_bin,betaGE_normPRS_bin,betaGE_gammaPRS_bin,betaGE_bimodalPRS_bin,betaGE_SNP_norm,betaGE_normPRS_norm,betaGE_gammaPRS_norm,betaGE_bimodalPRS_norm coefficients for G-E interactions
+#' @param MAF Minor Allele Frequency
+#' @param SNP_cor correlation between successive SNPs
+#' @param G_normPRS_cor correlation between multivariate normal genetic PRS variables
+#' @param E_bin_freq frequency of E=1 for binary environmental variables
+#' @param E_norm_cor correlation between multivariate normal environmental variables
+#' @param regress_E_bin_on_G_SNP,regress_E_bin_on_G_normPRS,regress_E_bin_on_G_gammaPRS,regress_E_bin_on_G_bimodalPRS,regress_E_norm_on_G_SNP,regress_E_norm_on_G_normPRS,regress_E_norm_on_G_gammaPRS,regress_E_norm_on_G_bimodalPRS  to violate the G-E independence assumption
+#'
+#' @return A named row vector of estimates and SEs
 #' @export
-combo_boot = function(D, G, E, pi1, spmle_G_par, spmle_E_par, control=list()) {
-  ## Set control parameters
-  con = list(nboot=0, trace=0, use_hess=TRUE)
-  con[(names(control))] = control
-
-  ## Correct too-small bootstrap sample
-  if(con$nboot!=0 && con$nboot<2) {
-    warning("To use the bootstrap, nboot must be >= 2.  Skipping bootstrap.")
-    con$nboot = 0
-  }
-  nboot = con$nboot
-
-  ## Sizes of arrays
-  n = length(D)
-  ncase = sum(D)
-  ncontrol = n - ncase
-  length_Omega = length(spmle_G_par)
-  G = as.matrix(G)
-  E = as.matrix(E)
-  nG = NCOL(G)
-  nE = NCOL(E)
-  reverse_swap_order = c(1,(2+nE):(1+nG+nE),2:(1+nE), rep(seq(from=(2+nG+nE), by=nE, length.out=nG), times=nE) + rep(0:(nE-1), each=nG))
-
-  ############### Bootstrap ####################
-  ## Split the data into controls & cases for balanced resampling (same # of controls & cases in bootstraps as in original data)
-  dat_control = list(D=D[D==0], G=G[D==0,], E=E[D==0,])
-  dat_case = list(D=D[D==1], G=G[D==1,], E=E[D==1,])
-
-  ## Within cases & controls, we use a balanced bootstrap: good asymptotic properties, easy to parallelize
-  ## First create long lists of indices.  To create bootstrapped samples, read off this list of indices
-  index_control = sample(rep(1:ncontrol, nboot))
-  index_case = sample(rep(1:ncase, nboot))
-
-  spmle_G_boot = spmle_E_boot = symple_fusion_boot = matrix(nrow=nboot, ncol=length_Omega)  # Set empty matrix to store bootstrap results
-  for(b in 1:nboot) { # bootstrap loop
-    if((b %% ceiling(sqrt(nboot))) == 0 && con$trace > -1) {
-      updatetxt = paste0("Bootstrap ", b,"\n")
-      cat(updatetxt)
-    }
-
-    ## Create bootstraped data set
-    D_boot = c(rep(0,ncontrol),rep(1,ncase))
-    G_boot = rbind(as.matrix(as.matrix(dat_control$G)[index_control[((b-1)*ncontrol+1):(b*ncontrol)],]), as.matrix(as.matrix(dat_case$G)[index_case[((b-1)*ncase+1):(b*ncase)],]))
-    E_boot = rbind(as.matrix(as.matrix(dat_control$E)[index_control[((b-1)*ncontrol+1):(b*ncontrol)],]), as.matrix(as.matrix(dat_case$E)[index_case[((b-1)*ncase+1):(b*ncase)],]))
-
-    ## Logistic regression
-    logistic_fit = glm(D_boot~G_boot*E_boot, family=binomial(link='logit'))
-
-    ## Calculate both normal & swapped SPMLE with asymptotic SE
-   	spmle_G_asymp_boot = spmle(startvals=coef(logistic_fit), D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=FALSE, control=con)
-   	spmle_E_asymp_boot = spmle(startvals=coef(logistic_fit), D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=TRUE, control=con)
-   	spmle_G_boot[b,] = spmle_G_asymp_boot$coefficients
-   	spmle_E_boot[b,] = spmle_E_asymp_boot$coefficients
-
-    ### Fusion (combo) asymptotic (to calculate bootstrap SE even when using asymptotic point estimate)
-    ## Define matrices
-    Omega_all_boot = c(spmle_G_asymp_boot$coefficients, spmle_E_asymp_boot$coefficients)
-    X_mat = rbind(diag(length_Omega), diag(length_Omega))
-    zero_mat = matrix(0, nrow=length_Omega, ncol=length_Omega)
-
-    ## Block diagonal with both inverse hessians
-    H_all_boot = -rbind(cbind(spmle_G_asymp_boot$H_inv, zero_mat), cbind(zero_mat, spmle_E_asymp_boot$H_inv))
-
-    ## Sigma block matrix
-    Sigma_GG_boot  = spmle_G_asymp_boot$Sigma
-    Sigma_EE_boot  = spmle_E_asymp_boot$Sigma
-    Sigma_GE_boot  = ((ncontrol-1)*cov(spmle_G_asymp_boot$zeta0, spmle_E_asymp_boot$zeta0) + (ncase-1)*cov(spmle_G_asymp_boot$zeta1, spmle_E_asymp_boot$zeta1))/n
-    Sigma_EG_boot  = t(Sigma_GE_boot)
-    Sigma_all_boot = rbind(cbind(Sigma_GG_boot, Sigma_GE_boot),cbind(Sigma_GE_boot, Sigma_EE_boot))
-
-    ## Lambda (asymptotic covariance) matrix
-    Lambda_all_boot = H_all_boot %*% Sigma_all_boot %*% t(H_all_boot)
-    Lambda_all_inv_boot = solve(Lambda_all_boot)
-
-    ## Optimum combination
-    Lambda_combo_boot = solve(t(X_mat) %*% Lambda_all_inv_boot %*% X_mat)
-    symple_fusion_boot[b,] = as.vector(Lambda_combo_boot %*% t(X_mat) %*% Lambda_all_inv_boot %*% Omega_all_boot)
-
-  }  ## End bootstrap loop
-
-  ### Calculate bootstrap SE
-  symple_fusion_asymp_boot_SE = apply(symple_fusion_boot, 2, FUN=function(x) sd(x, na.rm = TRUE))
-
-  ### Calculate bootstrap combo estimator
-  Omega_all = c(spmle_G_par, spmle_E_par)
-  X_mat = rbind(diag(length_Omega), diag(length_Omega))
-
-  ## Return estimates and Lambda matrix
-  return(list(boot_SE = symple_fusion_asymp_boot_SE,
-  						spmle_G_boot = spmle_G_boot,
-  						spmle_E_boot = spmle_E_boot,
-  						symple_fusion_boot = symple_fusion_boot
-  						))
-}
 
 

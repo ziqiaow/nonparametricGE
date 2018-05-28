@@ -1,4 +1,31 @@
 
+set.seed(1)
+dat = simulate_complex(ncase=200,
+                       ncontrol=200,
+                       beta0=-4.14,
+                       betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
+                       betaE_bin=log(1.5),
+                       betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
+                       MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
+                       SNP_cor=0.7,
+                       E_bin_freq=0.5)
+
+z=spmle(D,G,E,.03,dat)
+z
+summary(z)
+
+zz=combo_spmle(D,G,E,.03,dat,20)
+zz
+summary(zz)
+head(predict(zz, interval="conf"))
+
+zzz=combo_spmle(D,G,E,pi1=.03,data=dat,nboot=20, ncores=2, control=list(trace=1))
+zzz
+summary(zzz)
+
+Z=combo_spmle(D,G,E,pi1=.03,data=dat,nboot=100, ncores=4)
+Z
+summary(Z)
 
 ################################################################################ Adding data to spmle
 ## Calculate asymptotic SE for SPMLE
