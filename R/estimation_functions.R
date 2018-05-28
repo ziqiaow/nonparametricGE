@@ -218,6 +218,12 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   con = list(trace=0, use_hess=TRUE, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
 
+  ## Remove missing values and convert G and E to matrices
+  complete = complete.cases(D, G, E)
+  D = D[complete]
+  G = as.matrix(as.matrix(G)[complete,])
+  E = as.matrix(as.matrix(E)[complete,])
+
   ## Sizes of arrays
   n = length(D)
   ncase = sum(D)
@@ -258,13 +264,6 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   linear_predictors = model_matrix %*% spmle_max$par  # logistic scale
   fitted_values = plogis(q=linear_predictors)         # probability scale
 
-  ## Deviance residuals, total deviance, and df resid & null
-  deviance_resid = sqrt(-2*log(abs(1-D-fitted_values))) * sign(D-0.5)
-  total_deviance = sum(deviance_resid^2)
-  df_resid = n - df_model
-  null_deviance = sum(-2*log(abs(1-D-mean(D))))
-  df_null = n - 1
-
   ## Loglikelihood, AIC, and BIC
   loglik = -spmle_max$value
   attr(loglik, "nobs") = n
@@ -273,8 +272,16 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   AIC = 2*df_model - 2*loglik
   BIC = log(n) * df_model - 2*loglik
 
+  ## Pearson residuals, total deviance, and df resid & null
+  pearson_resid = (D-fitted_values) / sqrt(fitted_values*(1-fitted_values))
+  total_deviance = -2*loglik
+  df_resid = n - df_model
+  null_deviance = sum(-2*log(abs(1-D-mean(D))))
+  df_null = n - 1
+
   ## Compile results into a list.  Use glm-object naming conventions.  If we swapped G & E, change back now
   spmle_est = list(coefficients      = spmle_max$par[reverse_swap_order],
+                   pi1               = pi1,
                    SE                = SE_asy[reverse_swap_order],
                    cov               = Lambda[reverse_swap_order,reverse_swap_order]/n,
                    H_inv             = H_inv[reverse_swap_order,reverse_swap_order],
@@ -287,9 +294,10 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
                    formula           = formula,
                    data              = data,
                    model             = model_frame,
+                   terms             = attr(model_frame, "terms"),
                    linear.predictors = linear_predictors,
                    fitted.values     = fitted_values,
-                   residuals         = deviance_resid,
+                   residuals         = pearson_resid,
                    deviance          = total_deviance,
                    null.deviance     = null_deviance,
                    df.residual       = df_resid,

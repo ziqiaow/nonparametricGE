@@ -1,10 +1,13 @@
 ########### Functions to provide methods for S3 objects of class spmle
 
+
 ## Return the loglikelihood of spmle objects
 logLik.spmle = function(x) x$logLik
 
+
 ## Print spmle objects
 print.spmle = function(x, ...) stats:::print.glm(x, ...)
+
 
 ## Summarize spmle objects (similar to summary.glm)
 summary.spmle = function (object, correlation = FALSE, symbolic.cor = FALSE, ...) {
@@ -27,7 +30,7 @@ summary.spmle = function (object, correlation = FALSE, symbolic.cor = FALSE, ...
   retry = list(retries=object$ucminf$retry, start_vals=object$ucminf$start_vals)
   keep = match(c("call", "terms", "family", "deviance", "aic", "contrasts",
                  "df.residual", "null.deviance", "df.null", "na.action"), names(object), 0L)
-  ans = c(object[keep], list(deviance.resid = residuals(object, type = "deviance"),
+  ans = c(object[keep], list(pearson.resid = residuals(object),
                              coefficients = coef.table,
                              aliased = aliased,
                              df = c(object$rank, df.r, df.f),
@@ -44,31 +47,32 @@ summary.spmle = function (object, correlation = FALSE, symbolic.cor = FALSE, ...
   return(ans)
 }
 
+
 ## Print summary of spmle objects (similar to print.summary.glm)
 print.summary.spmle = function (x, digits = max(3L, getOption("digits") - 3L), symbolic.cor = x$symbolic.cor,
                                 signif.stars = getOption("show.signif.stars"), ...) {
   cat("\nCall:\n", paste(deparse(x$call), sep = "\n", collapse = "\n"), "\n\n", sep = "")
-  cat("Deviance Residuals: \n")
+  cat("Pearson Residuals: \n")
   if (x$df.residual > 5) {
-    x$deviance.resid <- setNames(quantile(x$deviance.resid, na.rm = TRUE), c("Min", "1Q", "Median", "3Q", "Max"))
+    x$pearson.resid = setNames(quantile(x$pearson.resid, na.rm = TRUE), c("Min", "1Q", "Median", "3Q", "Max"))
   }
-  xx <- zapsmall(x$deviance.resid, digits + 1L)
+  xx = zapsmall(x$pearson.resid, digits + 1L)
   print.default(xx, digits = digits, na.print = "", print.gap = 2L)
   if (length(x$aliased) == 0L) {
     cat("\nNo Coefficients\n")
   }
   else {
-    df <- if ("df" %in% names(x)) {
+    df = if ("df" %in% names(x)) {
       x[["df"]]
     } else {NULL}
-    if (!is.null(df) && (nsingular <- df[3L] - df[1L])) {
+    if (!is.null(df) && (nsingular = df[3L] - df[1L])) {
       cat("\nCoefficients: (", nsingular, " not defined because of singularities)\n", sep = "")
     } else {cat("\nCoefficients:\n")}
-    coefs <- x$coefficients
+    coefs = x$coefficients
     if (!is.null(aliased <- x$aliased) && any(aliased)) {
-      cn <- names(aliased)
-      coefs <- matrix(NA, length(aliased), 4L, dimnames = list(cn, colnames(coefs)))
-      coefs[!aliased, ] <- x$coefficients
+      cn = names(aliased)
+      coefs = matrix(NA, length(aliased), 4L, dimnames = list(cn, colnames(coefs)))
+      coefs[!aliased, ] = x$coefficients
     }
     printCoefmat(coefs, digits = digits, signif.stars = signif.stars, na.print = "NA", ...)
   }
@@ -76,16 +80,16 @@ print.summary.spmle = function (x, digits = max(3L, getOption("digits") - 3L), s
   if (nzchar(mess <- naprint(x$na.action))) {cat("  (", mess, ")\n", sep = "")}
   cat("AIC:", format(x$aic, digits = max(4L, digits + 1L)), "\n")
   cat("UCMINF retries: ", x$retry$retries, ", iterations: ", x$iter[1], ", max gradient at convergence: ", format(x$iter[2], digits=max(5L, digits + 1L)), sep="")
-  correl <- x$correlation
+  correl = x$correlation
   if (!is.null(correl)) {
-    p <- NCOL(correl)
+    p = NCOL(correl)
     if (p > 1) {
       cat("\nCorrelation of Coefficients:\n")
       if (is.logical(symbolic.cor) && symbolic.cor) {
         print(symnum(correl, abbr.colnames = NULL))
       } else {
-        correl <- format(round(correl, 2L), nsmall = 2L, digits = digits)
-        correl[!lower.tri(correl)] <- ""
+        correl = format(round(correl, 2L), nsmall = 2L, digits = digits)
+        correl[!lower.tri(correl)] = ""
         print(correl[-1, -p, drop = FALSE], quote = FALSE)
       }
     }
@@ -95,6 +99,208 @@ print.summary.spmle = function (x, digits = max(3L, getOption("digits") - 3L), s
 }
 
 
+## Calculate anova tables for spmle objects
+anova.spmle = function(object, ...) {
+  ## If called on a single model, compare to the null model
+  if(length(list(object, ...)) == 1L) {
+    nullLik = -0.5*object$null.deviance
+    attr(nullLik, "df") = 1
+    null_model = list(nobs=object$nobs, logLik=nullLik, formula="Null Model")
+    class(null_model) = "spmle"
+    return(anova.spmle(null_model, object))
+  }
+
+  objects = list(object, ...)
+  nmodels = length(objects)
+  ns = sapply(objects, nobs)
+  if (any(ns != ns[1])) {stop("models were not all fitted to the same size of dataset")}
+
+  rval = matrix(rep(NA, 5 * nmodels), ncol = 5)
+  colnames(rval) = c("#Df", "LogLik", "Df", "Chisq", "Pr(>Chisq)")
+  rownames(rval) = 1:nmodels
+  logL = lapply(objects, logLik)
+  rval[, 1] = as.numeric(sapply(logL, function(x) attr(x, "df")))
+  rval[, 2] = sapply(logL, as.numeric)
+  rval[2:nmodels, 3] = rval[2:nmodels, 1] - rval[1:(nmodels - 1), 1]
+  rval[2:nmodels, 4] = 2 * abs(rval[2:nmodels, 2] - rval[1:(nmodels - 1), 2])
+  rval[, 5] = pchisq(rval[, 4], round(abs(rval[, 3])), lower.tail = FALSE)
+  variables = lapply(objects, formula)
+  title = "Likelihood ratio test\n"
+  topnote = paste("Model ", format(1:nmodels), ": ", variables, sep = "", collapse = "\n")
+  structure(as.data.frame(rval), heading = c(title, topnote), class = c("anova", "data.frame"))
+}
 
 
+## Plot spmle objects
+plot.spmle = function(x, ...) {
+  resids = residuals(x)
+  preds = fitted(x)
+  frmula = as.character(as.expression(formula(x)))
+  xlabel = bquote(paste("Predicted Values,  spmle: ", .(frmula), ",   ", pi[1]== .(x$pi1)))
+  plot(x=preds, y=resids, xlab=xlabel, ylab="Pearson Residuals", main="Residuals vs Fitted")
+  panel.smooth(preds, resids)
+  abline(h = 0, lty = 3, col = "gray")
+}
 
+
+## Return covariance matrix
+vcov.spmle = function (object, ...) summary.spmle(object, ...)$cov.scaled
+
+
+##  Calculate confidence intervals
+confint.spmle = function(object, parm, level=0.95, ...) {
+  if(level>=1 & level<100) {level=level/100}
+  stopifnot(0<level, level<1)
+
+  pnames <- names(coef(object))
+  if(missing(parm)) {
+    parm <- seq_along(pnames)
+  } else if(is.character(parm)) {
+    parm <- match(parm, pnames, nomatch = 0L)
+  }
+
+  coefs = coef(object)[parm]
+  SE = object$SE[parm]
+
+  probs = c((1-level)/2, level+(1-level)/2)
+  CI = cbind(qnorm(probs[1], mean=coefs, sd=SE), qnorm(probs[2], mean=coefs, sd=SE))
+  colnames(CI) = paste(100*probs, "%")
+  rownames(CI) = pnames[parm]
+  return(CI)
+}
+
+
+################################################################################### Prediction for spmle objects
+###################################################################################
+predict.glm = function(object, newdata = NULL, type = c("link", "response","terms"), se.fit = FALSE, dispersion = NULL, terms = NULL, na.action = na.pass, ...)
+{
+  type <- match.arg(type)
+  na.act <- object$na.action
+  object$na.action <- NULL
+  if (!se.fit) {
+    if (missing(newdata)) {
+      pred <- switch(type,
+                     link = object$linear.predictors,
+                     response = object$fitted.values,
+                     terms = predict.lm(object, se.fit = se.fit, scale = 1, type = "terms", terms = terms))
+      if (!is.null(na.act)) pred <- napredict(na.act, pred)
+    } else {
+      pred <- predict.lm(object, newdata, se.fit, scale = 1, type = ifelse(type == "link", "response", type), terms = terms, na.action = na.action)
+      switch(type,
+             response = {pred <- family(object)$linkinv(pred)},
+             link = ,
+             terms = )
+    }
+  } else {
+    if (inherits(object, "survreg")) dispersion <- 1
+    if (is.null(dispersion) || dispersion == 0) dispersion <- summary(object, dispersion = dispersion)$dispersion
+    residual.scale <- as.vector(sqrt(dispersion))
+    pred <- predict.lm(object, newdata, se.fit, scale = residual.scale,
+                       type = ifelse(type == "link", "response", type),
+                       terms = terms, na.action = na.action)
+    fit <- pred$fit
+    se.fit <- pred$se.fit
+    switch(type,
+           response = {
+             se.fit <- se.fit * abs(family(object)$mu.eta(fit))
+             fit <- family(object)$linkinv(fit)
+           },
+           link = ,
+           terms = )
+    if (missing(newdata) && !is.null(na.act)) {
+      fit <- napredict(na.act, fit)
+      se.fit <- napredict(na.act, se.fit)
+    }
+    pred <- list(fit = fit, se.fit = se.fit, residual.scale = residual.scale)
+  }
+  pred
+}
+
+#' Predict method for spmle objects
+#'
+#' Obtains predictions and optionally estimates standard errors of those predictions from a fitted spmle object.
+#'
+#' \code{predict.spmle} produces predicted values, obtained by evaluating the
+#' spmle function in the frame newdata (which defaults to \code{model.frame(object)}).
+#' If the logical \code{se.fit} is \code{TRUE}, standard errors of the predictions
+#' are calculated (only in the link scale). Setting \code{interval="confidence"} specifies computation of
+#' confidence intervals at the specified level.
+#'
+#' If newdata is omitted the predictions are based on the data used for the fit.
+#' In that case how cases with missing values in the original fit is determined
+#' by the na.action argument of that fit. If na.action = na.omit omitted cases
+#' will not appear in the residuals, whereas if na.action = na.exclude they will
+#' appear (in predictions and standard errors), with residual value NA. See also napredict.
+#'
+#' @param object of class inheriting from "spmle"
+#' @param newdata An optional list or data frame in which to look for variables
+#'   with which to predict. If omitted, the fitted values are used.
+#' @param se.fit A switch indicating if standard errors are required.
+#' @param interval Type of interval calculation. Can be abbreviated. Prediction
+#'   intervals are not meaningful for binary responses and are not allowed.
+#' @param level Confidence level.
+#' @param type the type of prediction required. The default is on the scale of
+#'   the linear predictors; the alternative "response" is on the scale of the
+#'   response variable. Thus for a default binomial model the default
+#'   predictions are of log-odds (probabilities on logit scale) and
+#'   type = "response" gives the predicted probabilities.
+#' @param na.action function determining what should be done with missing values
+#'   in newdata. The default is to predict NA.
+#' @param ... further arguments passed to or from other methods.
+#'
+#' @return \code{predict.spmle} produces a vector of predictions or a matrix of
+#'   predictions and bounds with column names fit, lwr, and upr if interval is set.
+#'
+#'   If \code{se.fit} is \code{TRUE}, a list with the following components is returned:
+#'   \describe{
+#'     \item{\code{fit}}{vector or matrix as above}
+#'     \item{\code{se.fit}}{standard error of predicted means, in the link scale}
+#'     \item{\code{residual.scale}}{residual standard deviations}
+#'     \item{\code{df}}{degrees of freedom for residual}
+#'   }
+#' @export
+predict.spmle = function(object, newdata, se.fit=FALSE,
+                         interval=c("none", "confidence"), level=0.95,
+                         type=c("link", "response"), na.action=na.pass, ...) {
+  if(level>=1 & level<100) {level=level/100}
+  stopifnot(0<level, level<1)
+  if(pmatch(interval[[1]], "prediction", nomatch=0)) {stop("prediction intervals for binary response are not meaningful")}
+
+  tt <- terms(object)
+  if(missing(newdata) || is.null(newdata)) {
+    X <- model.matrix(object)
+  } else {
+    Terms <- delete.response(tt)
+    m <- model.frame(Terms, newdata, na.action = na.action)
+    if(!is.null(cl <- attr(Terms, "dataClasses"))) {.checkMFClasses(cl, m)}
+    X <- model.matrix(Terms, m, contrasts.arg = object$contrasts)
+  }
+  n <- length(object$residuals)
+  p <- object$rank
+  if (p < ncol(X) && !(missing(newdata) || is.null(newdata))) {warning("prediction from a rank-deficient fit may be misleading")}
+  beta <- object$coefficients
+  predictor <- drop(X %*% beta)
+
+  interval <- match.arg(interval)
+  type <- match.arg(type)
+  if(se.fit && type=="response") {
+    warning("standard errors can only be reported in the link scale")
+    se.fit = FALSE
+  }
+
+  if (se.fit || interval != "none") {
+    df <- object$df.residual
+    res.var <-  sum(object$residuals^2)/df
+    se = sqrt(diag(X %*% vcov(object) %*% t(X)))
+  }
+  if (interval != "none") {
+    tfrac <- qt((1 - level)/2, df)
+    hwid <- tfrac * se
+    predictor <- cbind(predictor, predictor + hwid %o% c(1, -1))
+    colnames(predictor) <- c("fit", "lwr", "upr")
+  }
+  if(type=="response") {predictor=plogis(predictor)}
+  if(se.fit) {
+    return(list(fit = predictor, se.fit = se, df = df, residual.scale = sqrt(res.var)))
+  } else {return(predictor)}
+}
