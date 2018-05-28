@@ -12,7 +12,7 @@
 #' @param betaG_SNP,betaG_normPRS,betaG_gammaPRS,betaG_bimodalPRS coefficients for genetic variables
 #' @param betaE_bin,betaE_norm coefficients for environmental variables
 #' @param betaGE_SNP_bin,betaGE_normPRS_bin,betaGE_gammaPRS_bin,betaGE_bimodalPRS_bin,betaGE_SNP_norm,betaGE_normPRS_norm,betaGE_gammaPRS_norm,betaGE_bimodalPRS_norm coefficients for G-E interactions
-#' @param MAF Mean Allele Frequency
+#' @param MAF Minor Allele Frequency
 #' @param SNP_cor correlation between successive SNPs
 #' @param G_normPRS_cor correlation between multivariate normal genetic PRS variables
 #' @param E_bin_freq frequency of E=1 for binary environmental variables
