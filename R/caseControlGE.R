@@ -1,23 +1,51 @@
 #' Semiparametric Gene-Environment Interactions in Case-Control Studies
 #'
-#' This package was written to perform simulations for the follow up to Stalder et. al. (2017).
+#' An R package for analysis of gene-environment interactions in case-control studies,
+#' using distribution-free retrospective methodology.  The method of Stalder et. al. (2017)
+#' and the improvement suggested by Wang et. al (2018) use a retrospective likelihood
+#' framework under the assumption of gene-environment independence (in the population)
+#' to gain efficiency when estimating the interaction effects of genetic and environmental
+#' variables.
 #'
-#' \code{\link{simfun}} Simulates then maximizes the retrospective pseudolikelihood of case-control data under the
-#' assumption of G-E independence.  It returns estimates, asymptotic standard error, and
-#' (optionally) bootstrapped standard error for several versions of the estimator.
+#' Both methods treat the genetic and environmental variables nonparametrically,
+#' facilitating the analysis of polygenic analysis for which distributional assumptions
+#' are difficult to justify.
 #'
-#' \code{\link{simulate_complex}} simulates data to be analyzed by \code{simfun},
-#' logistic regression, or other models.  This function was used to simulate data for
-#' Stalder et. al. (2017).  The user can specify up to three types of genetic variables
-#' (SNPs with additive effects under HWE, normally distributed polygenic risk scores,
-#' and gamma distributed polygenic risk scores), each of which can be multivariate.
-#' Two types of environmental variables (binary and normal) can also be potentially multivariate.
+#' @section Keywords:
+#' case-control study; gene-environment interaction; genetic epidemiology; retrospective method;
+#' semiparametric analysis; pseudolikelihood; polygenic analysis
 #'
-#' \code{\link{combo_asymp}} is called by \code{\link{simfun}} to calculate estimates and asymptotic
-#' SE.
+#' @section Contents:
+#' \describe{
+#'   \item{\code{\link{spmle}}}{implements method of Stalder et. al. (2017).  Given
+#'     binary response \code{D} (disease status), a vector or matrix of genetic
+#'     risk factors \code{G}, a vector or matrix of environmental risks \code{E},
+#'     and the population disease rate \code{pi1}, \code{spmle} fits a model of the
+#'     form \code{D ~ G * E} by maximizing the retrospective pseudolikelihood.}
+#'   \item{\code{\link{spmleCombo}}}{implements the method of of Wang et. al (2018)
+#'     under the same set of assumptions as \code{spmle}.  This function takes the
+#'     same imput as \code{spmle} with the addition of \code{nboot} (number of
+#'     bootstrap samples) and \code{ncores} (number of CPU cores to use simultaneously).
+#'     \code{spmleCombo} produces estimates that, on average, have significantly
+#'     smaller mean squared error than \code{spmle}, at the cost of increased
+#'     computation to calculate the bootstrap standard error.}
+#'   \item{\code{\link{simulateCC}}}{simulates case-control data with a wide range
+#'     of possible genetic and environmental variables}
+#'   \item{methods for class \code{"spmle"}}{both \code{spmleCombo} and \code{spmle}
+#'     return objects of class \code{"spmle"}.  A range of S3 methods are provided:
+#'     \code{anova.spmle, confint.spmle, logLik.spmle, model.matrix.spmle,
+#'     plot.spmle, \link{predict.spmle}, print.spmle, print.summary.spmle,
+#'     summary.spmle, vcov.spmle}.}
+#' }
 #'
-#' \code{\link{combo_boot}} is called by \code{\link{simfun}} to calculate bootstrap estimates.  It
-#' is called after \code{\link{combo_asymp}}
+#' @section References:
+#' Stalder, O., Asher, A., Liang, L., Carroll, R. J., Ma, Y., and Chatterjee, N. (2017).
+#' \emph{Semi-parametric analysis of complex polygenic gene-environment interactions in case-control studies.}
+#' Biometrika, 104, 801–812.
+#'
+#' Wang, T., Asher, A., Carroll, R. J. (2018).
+#' \emph{Improved Semiparametric Analysis of Polygenic Gene-Environment Interactions in Case-Control Studies}
+#' Unpublished.
 #'
 #' @useDynLib caseControlGE
 #' @importFrom Rcpp evalCpp

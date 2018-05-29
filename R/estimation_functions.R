@@ -114,31 +114,81 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 #'     "\code{grtol}" controls \code{ucminf}'s gradient stopping criterion, which defaults to
 #'     \code{1e-6}.  \code{grtol} should not be set larger than the \code{spmle} control parameter \code{max_grad_tol}.}
 #' }
+#'
+#' @section References:
+#' Stalder, O., Asher, A., Liang, L., Carroll, R. J., Ma, Y., and Chatterjee, N. (2017).
+#' \emph{Semi-parametric analysis of complex polygenic gene-environment interactions in case-control studies.}
+#' Biometrika, 104, 801–812.
+#'
 #' @param D a binary vector of disease status (1=case, 0=control).
 #' @param G a vector or matrix (if multivariate) containing genetic data. Can be continuous, discrete, or a combination.
 #' @param E a vector or matrix (if multivariate) containing environmental data. Can be continuous, discrete, or a combination.
-#' @param pi1 the population disease rate, a scalar in [0, 1) or the string "rare".  Using \code{pi1=0} is the rare disease approximation.
-#' @param data an optional data frame, list, or environment (or object coercible by \code{\link[base]{as.data.frame}}
-#'   to a data frame) containing the variables in the model.  If not found in data, the variables are taken from
-#'   the environment from which \code{spmle} is called.
+#' @param pi1 the population disease rate, a scalar in [0, 1) or the string "rare".
+#'   Using \code{pi1=0} is the rare disease approximation.
+#' @param data an optional list, environment, or object coercible to a data frame by
+#'   \code{\link[base]{as.data.frame}} containing the variables in the model.  If not found
+#'   in data, the variables are taken from the environment from which \code{spmleCombo} is called.
 #' @param control a list of control parameters that allow the user to control the optimization algorithm.  See 'Details'.
 #' @param swap a logical scalar rarely of interest to the end user.  Dependence on the distributions of G and E
 #'   are removed using different methods; this switch swaps them to produce a symmetric estimator with identical
 #'   properties to the SPMLE.  Default \code{FALSE}.
 #' @param startvals an optional numeric vector of coefficient starting values for optimization.  Usually left blank,
 #'   in which case logistic regression estimates are used as starting values.
-#' @return an object of class \code{spmle}.  The function \code{summary} (i.e., summary.spmle)
-#'   can be used to obtain or print a summary of the results and the function anova (i.e., anova.glm) to produce an analysis of variance table
-#' @seealso \code{\link{spmleCombo}} for a slower but more precise estimator, \code{\link{simulate_complex}} to simulate data
+#' @return an object of class \code{"spmle"}.  The function \code{summary} (i.e., \code{summary.spmle})
+#'   can be used to obtain or print a summary of the results and the function \code{anova}
+#'   (i.e., anova.spmle) to produce an analysis of variance table using likelihood-ratio tests.
+#'   Note that \code{anova.spmle} may be used to compare one \code{"spmle"} object
+#'   to another, because the loglikelihood reported by \code{logLik(spmle-obj)} is
+#'   accurate up to an additive constant; however it should not be used to compare
+#'   an \code{spmle-object} to a model fit by a different method.
+#'
+#'   \code{\link{predict.spmle}}, the \code{predict} method for S3 class \code{"spmle"}
+#'   can predict the expected response (on logistic or probability scales), compute
+#'   confidence intervals for the expected response, and provide standard errors.
+#'
+#'   The generic accessor functions \code{coefficients}, \code{fitted.values}
+#'   and \code{residuals} can be used to extract various useful features of the value returned by spmle.
+#'
+#'   An object of class \code{"spmle"} is a list containing at least the following components:
+#' \describe{
+#'   \item{\code{coefficients}}{a named vector of coefficients}
+#'   \item{\code{pi1}}{the value of pi1 used during the analysis}
+#'   \item{\code{SE}}{standard error estimate of coefficients}
+#'   \item{\code{cov}}{covariance matrix of coefficients}
+#'   \item{\code{glm_fit}}{a logistic regression model fit using the same model as \code{spmle}}
+#'   \item{\code{call}}{the matched call}
+#'   \item{\code{formula}}{the formula supplied}
+#'   \item{\code{data}}{the \code{data argument}}
+#'   \item{\code{model}}{the model frame}
+#'   \item{\code{terms}}{the \code{terms} object used}
+#'   \item{\code{linear.predictors}}{the linear fit on the logistic link scale}
+#'   \item{\code{fitted.values}}{the fitted values on the probability scale}
+#'   \item{\code{residuals}}{the Pearson residuals}
+#'   \item{\code{null.deviance}}{the deviance for the null model.  Deviance = \code{-2*logLik}.}
+#'   \item{\code{df.residual}}{the residual degrees of freedom}
+#'   \item{\code{df.null}}{the residual degrees of freedom for the null model}
+#'   \item{\code{rank}}{the numeric rank of the fitted linear model (i.e. df_model:
+#'     the number of parameters estimated)}
+#'   \item{\code{nobs}}{number of observations}
+#'   \item{\code{ncase}}{number of cases}
+#'   \item{\code{ncontrol}}{number of controls}
+#' }
+#'
+#' \code{spmle} objects created by \code{spmle()} additionally have components \code{logLik}
+#' (log pseudolikelihood), \code{deviance} (-2 * log pseudolikelihood), \code{aic}, \code{bic},
+#' \code{ucminf} (optimization output), and matrices \code{H_inv}, \code{Sigma}, \code{zeta0},
+#' and \code{zeta1}, which are used in calculating the asymptotic estimate of standard error.
+#'
+#' @seealso \code{\link{spmleCombo}} for a slower but more precise estimator, \code{\link{simulateCC}} to simulate data
 #' @examples
 #' # Simulation from Table 1 in Stalder et. al. (2017)
 #' set.seed(2018)
-#' dat = simulate_complex(ncase=500, ncontrol=500, beta0=-4.14,
-#'                        betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
-#'                        betaE_bin=log(1.5),
-#'                        betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
-#'                        MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
-#'                        SNP_cor=0.7, E_bin_freq=0.5)
+#' dat = simulateCC(ncase=500, ncontrol=500, beta0=-4.14,
+#'                  betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
+#'                  betaE_bin=log(1.5),
+#'                  betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
+#'                  MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
+#'                  SNP_cor=0.7, E_bin_freq=0.5)
 #'
 #' # SPMLE with known population disease rate of 0.03
 #' spmle(D=D, G=G, E=E, pi1=0.03, data=dat)
@@ -148,9 +198,9 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 #' # This simulation scenario was used in the Supplementary Material of Stalder et. al. (2017)
 #' # to compare performance against the less flexible method of Chatterjee and Carroll (2005),
 #' # which is available as the function as snp.logistic in the Bioconductor package CGEN.
-#' dat2 = simulate_complex(ncase=100, ncontrol=100, beta0=-3.77,
-#'                         betaG_SNP=log(1.2), betaE_bin=log(1.5),
-#'                         betaGE_SNP_bin=log(1.3), MAF=0.1)
+#' dat2 = simulateCC(ncase=100, ncontrol=100, beta0=-3.77,
+#'                   betaG_SNP=log(1.2), betaE_bin=log(1.5),
+#'                   betaGE_SNP_bin=log(1.3), MAF=0.1)
 #'
 #' # SPMLE using the rare disease assumption, optimization tracing,
 #' # and no hessian preconditioning.
@@ -248,7 +298,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   hess_zeta = hesszeta(Omega=spmle_max$par, D=D, G=G, E=E, pi1=pi1)
   Sigma = ((ncontrol-1)*cov(hess_zeta$zeta0) + (ncase-1)*cov(hess_zeta$zeta1))/n  # (ncontrol-1) to correct denominator because cov uses the "sample covariance matrix" denominator of n-1
   H_inv = -n*solve(hess_zeta$hessian)    # = (-hessian/n)^-1 = (Gamma_1 - Gamma_2)^-1
-  Lambda = H_inv %*% Sigma %*% t(H_inv) / n  # covar matrix of OmegaHat
+  Lambda = H_inv %*% Sigma %*% t(H_inv) / n  # covar matrix of sqrt(n) * OmegaHat
   SE_asy = sqrt(diag(Lambda))
 
   ## Calculate predictions
@@ -350,13 +400,24 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
 #'     "\code{grtol}" controls \code{ucminf}'s gradient stopping criterion, which defaults to
 #'     \code{1e-6}.  \code{grtol} should not be set larger than the \code{spmleCombo} control parameter \code{max_grad_tol}.}
 #' }
+#'
+#' @section References:
+#' Stalder, O., Asher, A., Liang, L., Carroll, R. J., Ma, Y., and Chatterjee, N. (2017).
+#' \emph{Semi-parametric analysis of complex polygenic gene-environment interactions in case-control studies.}
+#' Biometrika, 104, 801–812.
+#'
+#' Wang, T., Asher, A., Carroll, R. J. (2018).
+#' \emph{Improved Semiparametric Analysis of Polygenic Gene-Environment Interactions in Case-Control Studies}
+#' Unpublished.
+#'
 #' @param D a binary vector of disease status (1=case, 0=control).
 #' @param G a vector or matrix (if multivariate) containing genetic data. Can be continuous, discrete, or a combination.
 #' @param E a vector or matrix (if multivariate) containing environmental data. Can be continuous, discrete, or a combination.
-#' @param pi1 the population disease rate, a scalar in [0, 1) or the string "rare".  Using \code{pi1=0} is the rare disease approximation.
-#' @param data an optional data frame, list, or environment (or object coercible by \code{\link[base]{as.data.frame}}
-#'   to a data frame) containing the variables in the model.  If not found in data, the variables are taken from
-#'   the environment from which \code{spmleCombo} is called.
+#' @param pi1 the population disease rate, a scalar in [0, 1) or the string "rare".
+#'   Using \code{pi1=0} is the rare disease approximation.
+#' @param data an optional list, environment, or object coercible to a data frame by
+#'   \code{\link[base]{as.data.frame}} containing the variables in the model.  If not found
+#'   in data, the variables are taken from the environment from which \code{spmleCombo} is called.
 #' @param nboot an integer: the number of bootstraps to use when estimating the SE of the
 #'   Symmetric Combination Estimator.  Setting \code{nboot=0} disables the bootstrap
 #'   and uses the asymptotic standard error estimate (not recommended because asymptotic
@@ -367,17 +428,60 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
 #' @param control a list of control parameters that allow the user to control the optimization algorithm.  See 'Details'.
 #' @param startvals an optional numeric vector of coefficient starting values for optimization.  Usually left blank,
 #'   in which case logistic regression estimates are used as starting values.
-#' @return an object of class \code{spmle}.
-#' @seealso \code{\link{spmle}}, \code{\link{simulate_complex}} to simulate data
+#' @return an object of class \code{"spmle"}.  The function \code{summary} (i.e., \code{summary.spmle})
+#'   can be used to obtain or print a summary of the results.  The Symmetric Combination Estimator
+#'   is not a maximum (pseudo)likelihood estimator like \code{\link{spmle}}; it is the
+#'   optimal combination of two such estimators.  As such, it has no associated loglikelihood
+#'   and the function \code{anova.spmle} cannot be used to compare models fit using
+#'   \code{spmleCombo}.
+#'
+#'   \code{\link{predict.spmle}}, the \code{predict} method for S3 class \code{"spmle"}
+#'   can predict the expected response (on logistic or probability scales), compute
+#'   confidence intervals for the expected response, and provide standard errors.
+#'
+#'   The generic accessor functions \code{coefficients}, \code{fitted.values}
+#'   and \code{residuals} can be used to extract various useful features of the value returned by spmle.
+#'
+#'   An object of class \code{"spmle"} is a list containing at least the following components:
+#' \describe{
+#'   \item{\code{coefficients}}{a named vector of coefficients}
+#'   \item{\code{pi1}}{the value of pi1 used during the analysis}
+#'   \item{\code{SE}}{standard error estimate of coefficients}
+#'   \item{\code{cov}}{covariance matrix of coefficients}
+#'   \item{\code{glm_fit}}{a logistic regression model fit using the same model as \code{spmleCombo}}
+#'   \item{\code{call}}{the matched call}
+#'   \item{\code{formula}}{the formula supplied}
+#'   \item{\code{data}}{the \code{data argument}}
+#'   \item{\code{model}}{the model frame}
+#'   \item{\code{terms}}{the \code{terms} object used}
+#'   \item{\code{linear.predictors}}{the linear fit on the logistic link scale}
+#'   \item{\code{fitted.values}}{the fitted values on the probability scale}
+#'   \item{\code{residuals}}{the Pearson residuals}
+#'   \item{\code{null.deviance}}{the deviance for the null model}
+#'   \item{\code{df.residual}}{the residual degrees of freedom}
+#'   \item{\code{df.null}}{the residual degrees of freedom for the null model}
+#'   \item{\code{rank}}{the numeric rank of the fitted linear model (i.e. df_model:
+#'     the number of parameters estimated)}
+#'   \item{\code{nobs}}{number of observations}
+#'   \item{\code{ncase}}{number of cases}
+#'   \item{\code{ncontrol}}{number of controls}
+#' }
+#'
+#' \code{spmle} objects created by \code{spmleCombo()} additionally have components \code{spmle_E}
+#' (model from \code{spmle} that profiled out the distribution of E), \code{spmle_G}
+#' (model from \code{spmle} that profiled out the distribution of G with \code{swap=TRUE}),
+#' and \code{bootstraps} (matrix of bootstrapped parameter estimates, if \code{nboot > 0}).
+#'
+#' @seealso \code{\link{spmle}}, \code{\link{simulateCC}} to simulate data
 #' @examples
 #' # Simulation from Table 1 in Stalder et. al. (2017)
 #' set.seed(2018)
-#' dat = simulate_complex(ncase=500, ncontrol=500, beta0=-4.14,
-#'                        betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
-#'                        betaE_bin=log(1.5),
-#'                        betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
-#'                        MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
-#'                        SNP_cor=0.7, E_bin_freq=0.5)
+#' dat = simulateCC(ncase=500, ncontrol=500, beta0=-4.14,
+#'                  betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
+#'                  betaE_bin=log(1.5),
+#'                  betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
+#'                  MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
+#'                  SNP_cor=0.7, E_bin_freq=0.5)
 #'
 #' # SPMLE with known population disease rate of 0.03 and asymptotic SE estimates
 #' spmleCombo(D=D, G=G, E=E, pi1=0.03, data=dat, nboot=0)
@@ -387,9 +491,9 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
 #' # This simulation scenario was used in the Supplementary Material of Stalder et. al. (2017)
 #' # to compare performance against the less flexible method of Chatterjee and Carroll (2005),
 #' # which is available as the function as snp.logistic in the Bioconductor package CGEN.
-#' dat2 = simulate_complex(ncase=100, ncontrol=100, beta0=-3.77,
-#'                         betaG_SNP=log(1.2), betaE_bin=log(1.5),
-#'                         betaGE_SNP_bin=log(1.3), MAF=0.1)
+#' dat2 = simulateCC(ncase=100, ncontrol=100, beta0=-3.77,
+#'                   betaG_SNP=log(1.2), betaE_bin=log(1.5),
+#'                   betaGE_SNP_bin=log(1.3), MAF=0.1)
 #'
 #' # SPMLE using the rare disease assumption, 50 bootstraps, 2 cores
 #' # and no hessian preconditioning.

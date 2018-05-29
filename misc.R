@@ -1715,5 +1715,103 @@ ppp = function(object, newdata, se.fit=FALSE,
   print(se.fit)
 }
 
+}}}}
+}#}}
+##############################################################################################
+f=function(x1, x2, x3, x4, ...) {
+cl <- match.call()
+mf <- match.call(expand.dots = FALSE)
+m <- match(c("formula", "data", "subset", "weights", "na.action", "offset"), names(mf), 0L)
+return(list(cl, mf, m))
+mf <- mf[c(1L, m)]
+mf$drop.unused.levels <- TRUE
+}
 
-}#
+f=function(x1, x2, x3, x4, ...) {
+  args(match.fun(match.call()[[1]]))
+}
+
+f=function(x1, x2=2, x3, x4){
+  cl = match.call()
+  nf = names(formals())
+  m = match(nf, names(cl), -1L)
+  print(list(name.cl=names(cl), cl=cl, nf=nf, m=m))
+  undefined = nf[which(m==-1)]
+  # for(i in seq_along(undefined)) assign(undefined[i], 77.7)
+  lapply(nf[which(m==-1)], function(x) assign(x, NULL, pos=parent.frame(n=2)))
+  cat(x1, x2, x3, x4)
+}
+f()
+
+f=function(x1, x2=9, x3, x4){
+  nf = names(formals())
+  # for(i in seq_along(nf)) print(get0(nf[i], ifnotfound="missed"))
+  # return(lapply(nf, function(x) get0(x, ifnotfound="missed")))
+  # cat(x1, x2, x3, x4)
+  print(enn(as.expression("x1")))
+  print(enn("x2"))
+  print(enn("x3"))
+  print(enn("x4"))
+  sapply(nf, enn)
+}
+f()
+f(x3=4)
+f(2)
+f(1,2)
+f(x2="TEE")
+f(1,2,3,4)
+
+cat("\nlala\n")
+  lapply(nf[which(match(nf, names(match.call()), -1L) == -1)], function(x) assign(x, NULL, pos=parent.frame(n=2)))
+  cat(x1, x2, x3, x4)
+  is.null(x2)
+}
+f()
+f(x3=4)
+f(2)
+f(1,2)
+f(x2="TEE")
+f(1,2,3,4)
+
+# for(i in seq_along(nf)) print(get0(nf[i], ifnotfound="missed"))
+# return(lapply(nf, function(x) get0(x, ifnotfound="missed")))
+# get0("x3", ifnotfound="missed", envir=environment())
+
+f=function(x1, x2=9, x3, x4){
+  nf = names(formals())
+  exists("x4", where=parent.frame(), inherits=FALSE)
+}
+f()
+f(x3=4)
+f(2)
+f(1,2)
+f(x2="TEE")
+f(1,2,3,4)
+1
+f=function(x1, x2=9, x3, x4) {
+  print(missing(x2))
+  print(enn(x2))
+  x2
+}
+
+f()
+f(1)
+f(x2=NULL)
+
+
+f=function(x1, x2=9, x3, x4){
+  nf = names(formals())
+  lapply(nf[sapply(mget(nf), is.symbol)], function(x) assign(x, NULL, pos=parent.frame(n=2)))
+  mget(nf)
+  # cat(x1, x2, x3, x4)
+}
+f()
+f("first")
+f(1,2)
+f(x3=4)
+f(2)
+f(1,2)
+f(x2="TEE")
+f(1,2,3,4)
+
+a=function(...) f(...)
