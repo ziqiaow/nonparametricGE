@@ -1815,3 +1815,33 @@ f(x2="TEE")
 f(1,2,3,4)
 
 a=function(...) f(...)
+###############################################################################################
+
+set.seed(2018)
+dat = simulateCC(ncase=500, ncontrol=500, beta0=-4.165,
+                 betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
+                 betaE_bin=log(1.5),
+                 betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
+                 MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
+                 SNP_cor=0.7, E_bin_freq=0.5)
+
+# SPMLE with known population disease rate of 0.03 and asymptotic SE estimates
+spmleCombo(D=D, G=G, E=E, pi1=0.03, data=dat, nboot=0)
+
+# Simulation with a single SNP and a single binary environmental variable.
+# True population disease rate in this simulation is 0.03.
+# This simulation scenario was used in the Supplementary Material of Stalder et. al. (2017)
+# to compare performance against the less flexible method of Chatterjee and Carroll (2005),
+# which is available as the function as snp.logistic in the Bioconductor package CGEN.
+dat2 = simulateCC(ncase=500, ncontrol=500, beta0=-3.77,
+                  betaG_SNP=log(1.2), betaE_bin=c(log(1.5), 0),
+                  betaGE_SNP_bin=c(log(1.3), 0), MAF=0.1,
+                  E_bin_freq=0.5)
+
+# SPMLE using the rare disease assumption, 50 bootstraps, 2 cores
+spmle(D=D, G=G, E=E, pi1=0, data=dat2)
+spmleCombo(D=D, G=G, E=E, pi1=0, data=dat2, nboot=50, ncores=2)
+spmleCombo(D=D, G=G, E=E, pi1=0.03, data=dat2, nboot=100, ncores=2)
+
+
+

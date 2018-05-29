@@ -1,126 +1,99 @@
-
-
-#' @param control a list of control parameters.
-#'     \code{nboot} number of bootstraps.  Default \code{0}.
-#'     \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{0}.
-#'     \code{usehess} logical: precondition optimization with the hessian.  Default \code{TRUE}.
-#'     \code{useseed} logical: use the simulation number as the seed.  Default \code{TRUE}.
-#' @param pi1 pipulation disease rate
-#' @param ncase,ncontrol number of cases and controls
-#' @param beta0 logistic intercept
-#' @param betaG_SNP,betaG_normPRS,betaG_gammaPRS,betaG_bimodalPRS coefficients for genetic variables
-#' @param betaE_bin,betaE_norm coefficients for environmental variables
-#' @param betaGE_SNP_bin,betaGE_normPRS_bin,betaGE_gammaPRS_bin,betaGE_bimodalPRS_bin,betaGE_SNP_norm,betaGE_normPRS_norm,betaGE_gammaPRS_norm,betaGE_bimodalPRS_norm coefficients for G-E interactions
-#' @param MAF Minor Allele Frequency
-#' @param SNP_cor correlation between successive SNPs
-#' @param G_normPRS_cor correlation between multivariate normal genetic PRS variables
-#' @param E_bin_freq frequency of E=1 for binary environmental variables
-#' @param E_norm_cor correlation between multivariate normal environmental variables
-#' @param regress_E_bin_on_G_SNP,regress_E_bin_on_G_normPRS,regress_E_bin_on_G_gammaPRS,regress_E_bin_on_G_bimodalPRS,regress_E_norm_on_G_SNP,regress_E_norm_on_G_normPRS,regress_E_norm_on_G_gammaPRS,regress_E_norm_on_G_bimodalPRS  to violate the G-E independence assumption
-#'
-#' @return A named row vector of estimates and SEs
-#' @export
-
-
-#' \code{\link{simulate_complex}} simulates data to be analyzed by \code{simfun},
-#' logistic regression, or other models.  This function was used to simulate data for
-#' Stalder et. al. (2017).  The user can specify up to three types of genetic variables
-#' (SNPs with additive effects under HWE, normally distributed polygenic risk scores,
-#' and gamma distributed polygenic risk scores), each of which can be multivariate.
-#' Two types of environmental variables (binary and normal) can also be potentially multivariate.
-
-
-
-
 #' Simulate case-control data with multivariate, possibly dependent genetic and environmental components.
 #'
-#' \code{simulateCC} simulates data to be analyzed by \code{\link{symple}},
-#' \code{\link{sympleCombo}}, logistic regression, or other methods.
+#' \code{simulateCC} simulates data to be analyzed by \code{\link{spmle}},
+#' \code{\link{spmleCombo}}, logistic regression, or other methods.
 #'
 #' The user can specify up to four types of genetic variables, each of which can
 #' be multivariate: SNPs with additive effects under Hardy-Weinberg Equilibrium
 #' and polygenic risk scores with normal, gamma, and bimodal distributions.
 #' Two types of environmental variables (binary and normal) can also be potentially multivariate.
 #'
-#' If both G and E are multivariate, \code{beta_GE_} and \code{regress_E_} arguments
-#' iterate G quickly and E slowly.  For example, if G_SNP and E_bin are both bivariate,
-#' \code{betaGE_SNP_bin} is ordered (G1*E1, G2*E1, G1*E2, G2*E2).
+#' The number of variables generated is determined by the length of the betas given.
+#' If you specify \code{betaG_normPRS = c(log(1.1), log(1.2))} and
+#' \code{betaE_bin = c(log(1.2), log(1.2), log(1.2))}, you will get two \code{G}
+#' variables (normally distributed polygenic risk scores), and three \code{E}
+#' variables (with binary distributions).  In this example, you would supply
+#' a vector of length 6 for \code{betaGE_normPRS_bin}.
 #'
-#' @param ncase,ncontrol number of cases and controls.
-#' @param beta0 logistic intercept. Can be manipulated to change the population disease rate.
+#' If both G and E are multivariate, \code{beta_GE_} and \code{regress_E_} arguments
+#' iterate G quickly and E slowly.  In the example above, \code{betaGE_normPRS_bin}
+#' is ordered (G1*E1, G2*E1, G1*E2, G2*E2, G1*E3, G2*E3).
+#'
+#' @param ncase,ncontrol number of cases and controls, both must be positive integers.
+#' @param beta0 logistic intercept, required. Can be manipulated to change the population disease rate.
 #' @param betaG_SNP,betaG_normPRS,betaG_gammaPRS,betaG_bimodalPRS optional coefficients for
-#'  genetic variable main effects (at least one must be specified).  Genetic variables can include SNPs and polygenic
-#'  risk scores with normal, gamma, and bimodal distributions.
-#'  A value of \code{NULL} for coefficient of a genetic variable means that type of genetic variable will not be generated.
-#'  Vector valued coefficients produce multivariate genetic data.
-#' @param betaE_bin,betaE_norm coefficients for environmental variable main effects. Environmental variables can include
-#'  binary and normally distributed random variables. A value of \code{NULL} for coefficient of an environmental variable
-#'  means that type of environmental variable will not be generated. Vector valued coefficients produce multivariate environmental data.
+#'   genetic main effects (at least one must be specified).  Genetic variables can include SNPs and polygenic
+#'   risk scores with normal, gamma, and bimodal distributions.  Vector valued coefficients produce multivariate genetic data.
+#'   When simulating SNPs, you must provide \code{MAF} with the same length as betaG_SNP.
+#' @param betaE_bin,betaE_norm optional coefficients for environmental variable main effects (at least one must be specified).
+#'   Environmental variables can include binary and normally distributed random variables.
+#'   Vector valued coefficients produce multivariate environmental data.
 #' @param betaGE_SNP_bin,betaGE_normPRS_bin,betaGE_gammaPRS_bin,betaGE_bimodalPRS_bin,betaGE_SNP_norm,betaGE_normPRS_norm,betaGE_gammaPRS_norm,betaGE_bimodalPRS_norm coefficients for
-#'  multiplicative G*E effects. The length of the coefficient of any given G*E interaction must be equal to the product of the lengths
-#'  of the coefficients of the corresponding G and E main effects. If one of the main effects is \code{NULL} the interaction must be \code{NULL} as well.
+#'   multiplicative G*E interaction effects.  The length of the coefficient of any given G*E interaction must be equal to the product of the lengths
+#'   of the coefficients of the corresponding G and E main effects. If one of the main effects is missing the interaction must be missing as well.
 #' @param MAF Minor Allele Frequency of SNPs. This vector is the same length as \code{beta_G_SNP} and has values between 0 and 1.
-#'  The MAF is used to generate SNP data that is in Hardy-Weinberg Equilibrium.
-#' @param SNP_cor scalar between values between -1 and 1. SNPs are simulated by generating multivariate normal random draws with an AR(\code{SNP_cor})
-#'  covariance matrix. These normal draws are then trichotomized according to HWE to simulate SNPs.
+#'   The MAF is used to generate SNP data that is in Hardy-Weinberg Equilibrium.
+#' @param SNP_cor scalar between values between -1 and 1. SNPs are simulated by generating multivariate normal random draws with an AR1(\code{SNP_cor})
+#'   covariance matrix. These normal draws are then trichotomized according to HWE to simulate SNPs.  Default \code{SNP_cor = 0}.
 #' @param G_normPRS_cor correlation matrix for multivariate normal polygenic risk scores. In the bivariate case, a 2x2 matrix or a scalar
-#'  (for correlation) are accepted. NULL values indicate independent polygenic risk scores.
+#'   (for correlation) are accepted.  Default \code{G_normPRS_cor = 0} generates independent polygenic risk scores.
 #' @param E_bin_freq marginal probability that E_bin = 1. Must have length equal to \code{length(betaE_bin)} and values between 0 and 1.
 #' @param E_norm_cor correlation matrix for multivariate normal environmental variable. In the bivariate case, a 2x2 matrix or a scalar
-#'  (for correlation) are accepted. NULL values indicate independent normal environmental variables.
+#'   (for correlation) are accepted.  Default \code{E_norm_cor = 0} generates independent normal environmental variables.
 #' @param regress_E_bin_on_G_SNP,regress_E_bin_on_G_normPRS,regress_E_bin_on_G_gammaPRS,regress_E_bin_on_G_bimodalPRS allow the simulation of case-control data that violates
-#'  the G-E independence assumption. If these arguments are \code{NULL} or all \code{0}s, the binary environmental variables will be independent
-#'  of the genetic variables. If non-null, the length of the regression argument must be equal to the product of the lengths of the coefficients
-#'  of the corresponding G and E main effects. The conditional expectations of binary environmental variables depend on the product of the
-#'  \code{regress_E_bin} arguments and the corresponding genetic variables.
+#'   the G-E independence assumption. If these arguments are \code{NULL} or all \code{0}s, the binary environmental variables will be independent
+#'   of the genetic variables. If non-null, the length of the regression argument must be equal to the product of the lengths of the coefficients
+#'   of the corresponding G and E main effects. The conditional expectations of binary environmental variables depend on the product of the
+#'   \code{regress_E_bin} arguments and the corresponding genetic variables.
 #' @param regress_E_norm_on_G_SNP,regress_E_norm_on_G_normPRS,regress_E_norm_on_G_gammaPRS,regress_E_norm_on_G_bimodalPRS allow the simulation of case-control data that violates
-#'  the G-E independence assumption. If these arguments are \code{NULL} or all \code{0}s, the normal environmental variables will be independent
-#'  of the genetic variables. If non-null, the length of the regression argument must be equal to the product of the lengths of the coefficients
-#'  of the corresponding G and E main effects. The conditional means of normal environmental variables depend on the product of the
-#'  \code{regress_E_norm} arguments and the corresponding genetic variables.
+#'   the G-E independence assumption. If these arguments are \code{NULL} or all \code{0}s, the normal environmental variables will be independent
+#'   of the genetic variables. If non-null, the length of the regression argument must be equal to the product of the lengths of the coefficients
+#'   of the corresponding G and E main effects. The conditional means of normal environmental variables depend on the product of the
+#'   \code{regress_E_norm} arguments and the corresponding genetic variables.
 #' @param control a list of control parameters.
-#'     \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{trace=0}.
+#'   \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{trace=0}.
 #' @return \code{simulateCC} produces a list with three elements:
-#'  \item{\code{D}}{a binary vector with \code{ncontrol} \code{0}s and \code{ncase} \code{1}s.}
-#'  \item{\code{G}}{a matrix with \code{ncontrol + ncase} rows and a column for each genetic variable. Genetic variables are ordered: SNPs, normal PRSs, gamma PRSs.}
-#'  \item{\code{E}}{a matrix with \code{ncontrol + ncase} rows and a column for each environmental variable. Environmental variables are ordered: binary, normal.}
-#' @seealso \code{symple}
+#'   \item{\code{D}}{a binary vector with \code{ncontrol} zeros and \code{ncase} ones.}
+#'   \item{\code{G}}{a matrix with \code{ncontrol + ncase} rows and a column for each genetic variable. Genetic variables are ordered: SNPs, normal PRSs, gamma PRSs, bimodal PRSs.}
+#'   \item{\code{E}}{a matrix with \code{ncontrol + ncase} rows and a column for each environmental variable. Environmental variables are ordered: binary, normal.}
+#' @seealso \code{\link{spmleCombo}}, \code{\link{spmle}}
 #' @examples
+#' set.seed(2018)
 #' # Simulation from Table 1 in Stalder et. al. (2017)
 #' dat = simulateCC(ncase=1000,
-#'                        ncontrol=1000,
-#'                        beta0=-4.14,
-#'                        betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
-#'                        betaE_bin=log(1.5),
-#'                        betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
-#'                        MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
-#'                        SNP_cor=0.7,
-#'                        E_bin_freq=0.5)
+#'                  ncontrol=1000,
+#'                  beta0=-4.165,
+#'                  betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
+#'                  betaE_bin=log(1.5),
+#'                  betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
+#'                  MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
+#'                  SNP_cor=0.7,
+#'                  E_bin_freq=0.5)
 #'
 #' # Simulation with 5 SNPs and a single normal environmental variable
 #' # that is dependent on G1 with an R^2 of 0.001.
 #' # True population disease rate in this simulation is 0.03.
 #' # This simulation scenario was used in the Supplementary Material of Stalder et. al. (2017)
-#' dat = simulateCC(ncase=1000,
-#'                        ncontrol=1000,
-#'                        beta0=-4.19,
-#'                        betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
-#'                        betaE_norm=(qnorm(0.75)-qnorm(0.25))*c(log(1.5)),
-#'                        betaGE_SNP_norm=(qnorm(0.75)-qnorm(0.25))*c(log(1.3), 0, 0, log(1.3), 0),
-#'                        MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
-#'                        SNP_cor=0.7,
-#'                        regress_E_norm_on_G_SNP=c(sqrt(0.001),rep(0,4)),
-#'                        control=list(trace=1))
+#' dat2 = simulateCC(ncase=1000,
+#'                   ncontrol=1000,
+#'                   beta0=-3.89,
+#'                   betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
+#'                   betaE_norm=log(1.5)/(qnorm(0.75)-qnorm(0.25)),
+#'                   betaGE_SNP_norm=c(log(1.3), 0, 0, log(1.3), 0) / (qnorm(0.75)-qnorm(0.25)),
+#'                   MAF=c(0.1, 0.3, 0.3, 0.3, 0.1),
+#'                   SNP_cor=0.7,
+#'                   regress_E_norm_on_G_SNP=c(sqrt(0.001),rep(0,4)),
+#'                   control=list(trace=1))
 #' @export
 simulateCC = function(ncase, ncontrol, beta0,
-                            betaG_SNP, betaG_normPRS, betaG_gammaPRS, betaG_bimodalPRS,
-                            betaE_bin, betaE_norm,
-                            betaGE_SNP_bin, betaGE_normPRS_bin, betaGE_gammaPRS_bin, betaGE_bimodalPRS_bin,
-                            betaGE_SNP_norm, betaGE_normPRS_norm, betaGE_gammaPRS_norm, betaGE_bimodalPRS_norm,
-                            MAF, SNP_cor=0, G_normPRS_cor=0, E_bin_freq=0.5, E_norm_cor=0,
-                            regress_E_bin_on_G_SNP, regress_E_bin_on_G_normPRS, regress_E_bin_on_G_gammaPRS, regress_E_bin_on_G_bimodalPRS,
-                            regress_E_norm_on_G_SNP, regress_E_norm_on_G_normPRS, regress_E_norm_on_G_gammaPRS, regress_E_norm_on_G_bimodalPRS,
-                            control=list()) {
+                      betaG_SNP, betaG_normPRS, betaG_gammaPRS, betaG_bimodalPRS,
+                      betaE_bin, betaE_norm,
+                      betaGE_SNP_bin, betaGE_normPRS_bin, betaGE_gammaPRS_bin, betaGE_bimodalPRS_bin,
+                      betaGE_SNP_norm, betaGE_normPRS_norm, betaGE_gammaPRS_norm, betaGE_bimodalPRS_norm,
+                      MAF, SNP_cor=0, G_normPRS_cor=0, E_norm_cor=0, E_bin_freq,
+                      regress_E_bin_on_G_SNP, regress_E_bin_on_G_normPRS, regress_E_bin_on_G_gammaPRS, regress_E_bin_on_G_bimodalPRS,
+                      regress_E_norm_on_G_SNP, regress_E_norm_on_G_normPRS, regress_E_norm_on_G_gammaPRS, regress_E_norm_on_G_bimodalPRS,
+                      control=list()) {
   ## set any unused arguments to NULL
   nf = names(formals())
   lapply(nf[sapply(mget(nf), is.symbol)], function(x) assign(x, NULL, pos=parent.frame(n=2)))
@@ -152,8 +125,6 @@ simulateCC = function(ncase, ncontrol, beta0,
   if(lenn(betaGE_normPRS_norm)    != lenn(betaG_normPRS)*lenn(betaE_norm))     stop("length(betaGE_normPRS_norm) must equal length(betaG_normPRS)*length(betaE_norm)")
   if(lenn(betaGE_gammaPRS_norm)   != lenn(betaG_gammaPRS)*lenn(betaE_norm))    stop("length(betaGE_gammaPRS_norm) must equal length(betaG_gammaPRS)*length(betaE_norm)")
   if(lenn(betaGE_bimodalPRS_norm) != lenn(betaG_bimodalPRS)*lenn(betaE_norm))  stop("length(betaGE_bimodalPRS_norm) must equal length(betaG_bimodalPRS)*length(betaE_norm)")
-
-  if(lenn(regress_E_bin_on_G_SNP) %!in% c(0, lenn(betaG_SNP)*lenn(betaE_bin)))          stop("length(regress_E_bin_on_G_SNP) must equal length(betaG_SNP)*length(betaE_bin)")
   if(lenn(regress_E_bin_on_G_SNP) %!in% c(0, lenn(betaG_SNP)*lenn(betaE_bin)))          stop("length(regress_E_bin_on_G_SNP) must equal length(betaG_SNP)*length(betaE_bin)")
   if(lenn(regress_E_bin_on_G_normPRS) %!in% c(0, lenn(betaG_normPRS)*lenn(betaE_bin)))      stop("length(regress_E_bin_on_G_normPRS) must equal length(betaG_normPRS)*length(betaE_bin)")
   if(lenn(regress_E_bin_on_G_gammaPRS) %!in% c(0, lenn(betaG_gammaPRS)*lenn(betaE_bin)))     stop("length(regress_E_bin_on_G_gammaPRS) must equal length(betaG_gammaPRS)*length(betaE_bin)")
@@ -166,7 +137,7 @@ simulateCC = function(ncase, ncontrol, beta0,
   if(enn(MAF)) if(max(MAF)>=1 | min(MAF)<=0) stop("All values of MAF must be between 0 and 1")
   if(enn(betaG_SNP)) if(!all(length(SNP_cor)==1 & SNP_cor<1 & SNP_cor>-1)) stop("SNP_cor must be between -1 and 1")
   if(enn(betaE_bin)) {
-  	if(!all(E_bin_freq<1 & E_bin_freq>0)) {stop("All E_bin_freq values must be between 0 and 1")}
+  	if(!is.numeric(E_bin_freq) || !all(E_bin_freq<1 & E_bin_freq>0)) {stop("All E_bin_freq values must be between 0 and 1")}
   	if(lenn(E_bin_freq) != lenn(betaE_bin)) {
   		if(lenn(E_bin_freq)==1) E_bin_freq = rep(E_bin_freq, times=lenn(betaE_bin))  # special case: multiple binary environmental variables with the same frequency
   		else stop("length(E_bin_freq) must equal length(betaE_bin) or 1")
@@ -434,6 +405,7 @@ simulateCC = function(ncase, ncontrol, beta0,
 #' Checks whether a variable exists (in the current environment) and is not NULL
 #'
 #' @param varname variable name
+#' @param n position number of environment to look in (Default of 1 uses the current environment)
 #'
 #' @return TRUE or FALSE
 #' @export
@@ -459,35 +431,6 @@ lenn = function(varname) {
   } else {0}
 }
 
-#' The opposite of \%in\%
-#'
-#' @return logical vector
-#' @export
+## The opposite of %in%
 `%!in%` = Negate(`%in%`)
-
-# f=function(x1, x2, x3, x4){
-#   cat("\nx1 enn", enn(x1))
-#   cat("\nx2 enn", enn(x2))
-#   cat("\nx3 enn", enn(x3))
-#   cat("\nx4 enn", enn(x4))
-#   cat("\nx1 lenn", lenn(x1))
-#   cat("\nx2 lenn", lenn(x2))
-#   cat("\nx3 lenn", lenn(x3))
-#   cat("\nx4 lenn", lenn(x4))
-# }
-#
-# # lenn = function(varname) {
-# #   if(identical(parent.frame(), globalenv())){
-# #     if(exists(as.character(substitute(varname)))) {return(length(varname))}
-# #   } else {
-# #     if(eval.parent(!missing(varname), n)) {return(length(varname))}
-# #   }
-# #   return(0)
-# # }
-
-
-#
-# f=function(x1, x2, x3, x4){
-#   return((match.call()))
-# }
 

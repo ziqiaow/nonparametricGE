@@ -3,7 +3,7 @@
 
 ## Return the loglikelihood of spmle objects
 #' @export
-logLik.spmle = function(x) x$logLik
+logLik.spmle = function(object, ...) object$logLik
 
 
 ## Print spmle objects

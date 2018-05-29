@@ -50,6 +50,6 @@
 #' @useDynLib caseControlGE
 #' @importFrom Rcpp evalCpp
 #' @importFrom utils head
-#' @importFrom stats binomial coef cor cov glm lm model.matrix plogis qlogis qnorm rbinom rgamma rnorm rt runif sd
-#' @importFrom stats model.frame setNames
+#' @importFrom stats binomial coef cor cov glm lm model.matrix plogis qlogis qnorm rbinom rgamma rnorm rt runif sd model.frame setNames .checkMFClasses complete.cases delete.response fitted formula logLik model.matrix.lm na.pass naprint nobs pchisq pnorm printCoefmat qt quantile residuals symnum terms vcov
+#' @importFrom graphics abline panel.smooth plot
 "_PACKAGE"

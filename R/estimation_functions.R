@@ -183,7 +183,7 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 #' @examples
 #' # Simulation from Table 1 in Stalder et. al. (2017)
 #' set.seed(2018)
-#' dat = simulateCC(ncase=500, ncontrol=500, beta0=-4.14,
+#' dat = simulateCC(ncase=500, ncontrol=500, beta0=-4.165,
 #'                  betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
 #'                  betaE_bin=log(1.5),
 #'                  betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
@@ -200,7 +200,8 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 #' # which is available as the function as snp.logistic in the Bioconductor package CGEN.
 #' dat2 = simulateCC(ncase=100, ncontrol=100, beta0=-3.77,
 #'                   betaG_SNP=log(1.2), betaE_bin=log(1.5),
-#'                   betaGE_SNP_bin=log(1.3), MAF=0.1)
+#'                   betaGE_SNP_bin=log(1.3), MAF=0.1,
+#'                   E_bin_freq=0.5)
 #'
 #' # SPMLE using the rare disease assumption, optimization tracing,
 #' # and no hessian preconditioning.
@@ -476,7 +477,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
 #' @examples
 #' # Simulation from Table 1 in Stalder et. al. (2017)
 #' set.seed(2018)
-#' dat = simulateCC(ncase=500, ncontrol=500, beta0=-4.14,
+#' dat = simulateCC(ncase=500, ncontrol=500, beta0=-4.165,
 #'                  betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
 #'                  betaE_bin=log(1.5),
 #'                  betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
@@ -485,19 +486,6 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
 #'
 #' # SPMLE with known population disease rate of 0.03 and asymptotic SE estimates
 #' spmleCombo(D=D, G=G, E=E, pi1=0.03, data=dat, nboot=0)
-#'
-#' # Simulation with a single SNP and a single binary environmental variable.
-#' # True population disease rate in this simulation is 0.03.
-#' # This simulation scenario was used in the Supplementary Material of Stalder et. al. (2017)
-#' # to compare performance against the less flexible method of Chatterjee and Carroll (2005),
-#' # which is available as the function as snp.logistic in the Bioconductor package CGEN.
-#' dat2 = simulateCC(ncase=100, ncontrol=100, beta0=-3.77,
-#'                   betaG_SNP=log(1.2), betaE_bin=log(1.5),
-#'                   betaGE_SNP_bin=log(1.3), MAF=0.1)
-#'
-#' # SPMLE using the rare disease assumption, 50 bootstraps, 2 cores
-#' # and no hessian preconditioning.
-#' spmle(D=D, G=G, E=E, pi1=0, data=dat2, nboot=50, ncores=2)
 #' @export
 spmleCombo = function(D, G, E, pi1, data, nboot=50, ncores=1, control=list(), startvals){
   if(nboot==0) {warning("nboot=0, using asymptotic standard error estimate, which has poor coverage properties")}

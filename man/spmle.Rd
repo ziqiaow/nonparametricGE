@@ -125,7 +125,7 @@ Biometrika, 104, 801–812.
 \examples{
 # Simulation from Table 1 in Stalder et. al. (2017)
 set.seed(2018)
-dat = simulateCC(ncase=500, ncontrol=500, beta0=-4.14,
+dat = simulateCC(ncase=500, ncontrol=500, beta0=-4.165,
                  betaG_SNP=c(log(1.2), log(1.2), 0, log(1.2), 0),
                  betaE_bin=log(1.5),
                  betaGE_SNP_bin=c(log(1.3), 0, 0, log(1.3), 0),
@@ -142,7 +142,8 @@ spmle(D=D, G=G, E=E, pi1=0.03, data=dat)
 # which is available as the function as snp.logistic in the Bioconductor package CGEN.
 dat2 = simulateCC(ncase=100, ncontrol=100, beta0=-3.77,
                   betaG_SNP=log(1.2), betaE_bin=log(1.5),
-                  betaGE_SNP_bin=log(1.3), MAF=0.1)
+                  betaGE_SNP_bin=log(1.3), MAF=0.1,
+                  E_bin_freq=0.5)
 
 # SPMLE using the rare disease assumption, optimization tracing,
 # and no hessian preconditioning.

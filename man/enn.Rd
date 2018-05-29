@@ -8,6 +8,8 @@ enn(varname, n = 1)
 }
 \arguments{
 \item{varname}{variable name}
+
+\item{n}{position number of environment to look in (Default of 1 uses the current environment)}
 }
 \value{
 TRUE or FALSE
