@@ -1,12 +1,18 @@
 #' Simulate case-control data with multivariate, possibly dependent genetic and environmental components.
 #'
-#' \code{simulateCC} simulates data to be analyzed by \code{\link{spmle}},
+#' \code{simulateCC} simulates case-control data to be analyzed by \code{\link{spmle}},
 #' \code{\link{spmleCombo}}, logistic regression, or other methods.
 #'
 #' The user can specify up to four types of genetic variables, each of which can
 #' be multivariate: SNPs with additive effects under Hardy-Weinberg Equilibrium
 #' and polygenic risk scores with normal, gamma, and bimodal distributions.
 #' Two types of environmental variables (binary and normal) can also be potentially multivariate.
+#'
+#' SNPs may be generated in linkage disequilibrium, yielding correlated SNPs.
+#' Multivariate normal polygenic risk scores may have a user-specified correlation
+#' matrix, as may multivariate normal environmental variables.  Correlation may
+#' also be specified between genetic and environmental variables to simulate
+#' data in violation of the gene-environment independence assumption.
 #'
 #' The number of variables generated is determined by the length of the betas given.
 #' If you specify \code{betaG_normPRS = c(log(1.1), log(1.2))} and
@@ -24,38 +30,55 @@
 #' @param betaG_SNP,betaG_normPRS,betaG_gammaPRS,betaG_bimodalPRS optional coefficients for
 #'   genetic main effects (at least one must be specified).  Genetic variables can include SNPs and polygenic
 #'   risk scores with normal, gamma, and bimodal distributions.  Vector valued coefficients produce multivariate genetic data.
-#'   When simulating SNPs, you must provide \code{MAF} with the same length as betaG_SNP.
+#'   When simulating SNPs, you must provide \code{MAF} with the same length as \code{betaG_SNP}.
 #' @param betaE_bin,betaE_norm optional coefficients for environmental variable main effects (at least one must be specified).
 #'   Environmental variables can include binary and normally distributed random variables.
 #'   Vector valued coefficients produce multivariate environmental data.
-#' @param betaGE_SNP_bin,betaGE_normPRS_bin,betaGE_gammaPRS_bin,betaGE_bimodalPRS_bin,betaGE_SNP_norm,betaGE_normPRS_norm,betaGE_gammaPRS_norm,betaGE_bimodalPRS_norm coefficients for
-#'   multiplicative G*E interaction effects.  The length of the coefficient of any given G*E interaction must be equal to the product of the lengths
-#'   of the coefficients of the corresponding G and E main effects. If one of the main effects is missing the interaction must be missing as well.
-#' @param MAF Minor Allele Frequency of SNPs. This vector is the same length as \code{beta_G_SNP} and has values between 0 and 1.
+#' @param betaGE_SNP_bin,betaGE_normPRS_bin,betaGE_gammaPRS_bin,betaGE_bimodalPRS_bin ,
+#' @param betaGE_SNP_norm,betaGE_normPRS_norm,betaGE_gammaPRS_norm,betaGE_bimodalPRS_norm coefficients for
+#'   multiplicative G*E interaction effects.  The length of the coefficient of any
+#'   given G*E interaction must equal the product of the lengths
+#'   of the coefficients of the corresponding G and E main effects.
+#' @param MAF Minor Allele Frequency of SNPs. This vector is the same length as
+#'   \code{beta_G_SNP} and has values between 0 and 1.
 #'   The MAF is used to generate SNP data that is in Hardy-Weinberg Equilibrium.
-#' @param SNP_cor scalar between values between -1 and 1. SNPs are simulated by generating multivariate normal random draws with an AR1(\code{SNP_cor})
+#'   This specifies \code{Pr[G=(0, 1, 2)] =} \code{[(1-MAF)^2, 2*MAF(1-MAF), MAF^2]}.
+#' @param SNP_cor scalar specifying the correlation between adjacent SNPs.
+#'   SNPs are simulated by generating multivariate normal random draws with an AR1(\code{SNP_cor})
 #'   covariance matrix. These normal draws are then trichotomized according to HWE to simulate SNPs.  Default \code{SNP_cor = 0}.
 #' @param G_normPRS_cor correlation matrix for multivariate normal polygenic risk scores. In the bivariate case, a 2x2 matrix or a scalar
-#'   (for correlation) are accepted.  Default \code{G_normPRS_cor = 0} generates independent polygenic risk scores.
-#' @param E_bin_freq marginal probability that E_bin = 1. Must have length equal to \code{length(betaE_bin)} and values between 0 and 1.
+#'   (for correlation) are accepted.  Default \code{G_normPRS_cor = 0} generates independent normal polygenic risk scores.
 #' @param E_norm_cor correlation matrix for multivariate normal environmental variable. In the bivariate case, a 2x2 matrix or a scalar
 #'   (for correlation) are accepted.  Default \code{E_norm_cor = 0} generates independent normal environmental variables.
-#' @param regress_E_bin_on_G_SNP,regress_E_bin_on_G_normPRS,regress_E_bin_on_G_gammaPRS,regress_E_bin_on_G_bimodalPRS allow the simulation of case-control data that violates
-#'   the G-E independence assumption. If these arguments are \code{NULL} or all \code{0}s, the binary environmental variables will be independent
-#'   of the genetic variables. If non-null, the length of the regression argument must be equal to the product of the lengths of the coefficients
-#'   of the corresponding G and E main effects. The conditional expectations of binary environmental variables depend on the product of the
-#'   \code{regress_E_bin} arguments and the corresponding genetic variables.
-#' @param regress_E_norm_on_G_SNP,regress_E_norm_on_G_normPRS,regress_E_norm_on_G_gammaPRS,regress_E_norm_on_G_bimodalPRS allow the simulation of case-control data that violates
-#'   the G-E independence assumption. If these arguments are \code{NULL} or all \code{0}s, the normal environmental variables will be independent
-#'   of the genetic variables. If non-null, the length of the regression argument must be equal to the product of the lengths of the coefficients
-#'   of the corresponding G and E main effects. The conditional means of normal environmental variables depend on the product of the
-#'   \code{regress_E_norm} arguments and the corresponding genetic variables.
-#' @param control a list of control parameters.
-#'   \code{trace} is a scalar.  If >-1, tracing information is produced.  Default \code{trace=0}.
+#' @param E_bin_freq marginal probability that E_bin = 1. Must have length equal to \code{length(betaE_bin)} and values between 0 and 1.
+#' @param regress_E_bin_on_G_SNP,regress_E_bin_on_G_normPRS,regress_E_bin_on_G_gammaPRS ,
+#' @param regress_E_bin_on_G_bimodalPRS allow the simulation of case-control data that violates
+#'   the G-E independence assumption.  If specified, binary environmental variables
+#'   will be generated with \code{Pr(E=1|G) =} \code{plogis[regress_E_bin_on_G * G +}
+#'   \code{qlogis(E_bin_freq)]}.  If these arguments are missing, \code{NULL},
+#'   or all \code{0}s, the binary environmental variables will be independent
+#'   of the genetic variables.  If specified, the length of the regression argument
+#'   must equal the product of the lengths of the coefficients of the corresponding
+#'   G and E main effects.
+#' @param regress_E_norm_on_G_SNP,regress_E_norm_on_G_normPRS,regress_E_norm_on_G_gammaPRS ,
+#' @param regress_E_norm_on_G_bimodalPRS allow the simulation of case-control data that violates
+#'   the G-E independence assumption.  If specified, normal environmental variables
+#'   will be generated from a Normal(\code{regress_E_norm_on_G * G}, 1) distribution.
+#'   If these arguments are missing, \code{NULL}, or all \code{0}s, the normal
+#'   environmental variables will be independent of the genetic variables.
+#'   If specified, the length of the regression argument must equal the product
+#'   of the lengths of the coefficients of the corresponding G and E main effects.
+#' @param control a list of control parameters, all of which are ignored except
+#'   \code{trace}, a scalar.  If \code{trace > -1}, information about the simulation
+#'   (e.g. population disease rate, correlations between SNPs, etc.) is produced.
+#'   Default \code{trace=0}.
 #' @return \code{simulateCC} produces a list with three elements:
 #'   \item{\code{D}}{a binary vector with \code{ncontrol} zeros and \code{ncase} ones.}
-#'   \item{\code{G}}{a matrix with \code{ncontrol + ncase} rows and a column for each genetic variable. Genetic variables are ordered: SNPs, normal PRSs, gamma PRSs, bimodal PRSs.}
-#'   \item{\code{E}}{a matrix with \code{ncontrol + ncase} rows and a column for each environmental variable. Environmental variables are ordered: binary, normal.}
+#'   \item{\code{G}}{a matrix with \code{ncontrol + ncase} rows and a column for
+#'     each genetic variable. Genetic variables are ordered: SNPs, normal PRSs,
+#'     gamma PRSs, bimodal PRSs.}
+#'   \item{\code{E}}{a matrix with \code{ncontrol + ncase} rows and a column for
+#'     each environmental variable. Environmental variables are ordered: binary, normal.}
 #' @seealso \code{\link{spmleCombo}}, \code{\link{spmle}}
 #' @examples
 #' set.seed(2018)
@@ -401,14 +424,6 @@ simulateCC = function(ncase, ncontrol, beta0,
 }
 
 
-
-#' Checks whether a variable exists (in the current environment) and is not NULL
-#'
-#' @param varname variable name
-#' @param n position number of environment to look in (Default of 1 uses the current environment)
-#'
-#' @return TRUE or FALSE
-#' @export
 enn = function(varname, n=1) {
   ## If called from the glovbal environment, look there
   if(identical(parent.frame(), globalenv())){
@@ -419,12 +434,6 @@ enn = function(varname, n=1) {
   return(FALSE)
 }
 
-#' Returns the length of a variable (0 if missing or null) whether a variable exists (in the current environment) and is not NULL
-#'
-#' @param varname variable name
-#'
-#' @return length of varname
-#' @export
 lenn = function(varname) {
   if(enn(varname, 2)) {
     length(varname)

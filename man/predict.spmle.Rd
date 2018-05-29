@@ -11,21 +11,20 @@
 \arguments{
 \item{object}{of class inheriting from "spmle"}
 
-\item{newdata}{An optional list or data frame in which to look for variables
-with which to predict. If omitted, the fitted values are used.}
+\item{newdata}{an optional list or data frame in which to look for variables
+to use when making predictions. If omitted, the fitted values are used.}
 
-\item{se.fit}{A switch indicating if standard errors are required.}
+\item{se.fit}{a switch indicating if standard errors are required.}
 
 \item{interval}{Type of interval calculation. Can be abbreviated. Prediction
 intervals are not meaningful for binary responses and are not allowed.}
 
-\item{level}{Confidence level.}
+\item{level}{confidence level.}
 
-\item{type}{the type of prediction required. The default is on the scale of
-the linear predictors; the alternative "response" is on the scale of the
-response variable. Thus for a default binomial model the default
-predictions are of log-odds (probabilities on logit scale) and
-type = "response" gives the predicted probabilities.}
+\item{type}{the type of prediction required. The default is \code{"link"} which
+uses the logit scale of the linear predictors, giving the log odds.
+The alternative \code{"response"} uses the probability scale, giving
+\code{Pr(D=1|G,E)}.}
 
 \item{na.action}{function determining what should be done with missing values
 in newdata. The default is to predict NA.}
@@ -39,24 +38,18 @@ in newdata. The default is to predict NA.}
   If \code{se.fit} is \code{TRUE}, a list with the following components is returned:
   \describe{
     \item{\code{fit}}{vector or matrix as above}
-    \item{\code{se.fit}}{standard error of predicted means, in the link scale}
-    \item{\code{residual.scale}}{residual standard deviations}
+    \item{\code{se.fit}}{vector with standard error of predicted means, in the link scale}
+    \item{\code{residual.scale}}{residual standard deviation}
     \item{\code{df}}{degrees of freedom for residual}
   }
 }
 \description{
-Obtains predictions and optionally estimates standard errors of those predictions from a fitted spmle object.
+Obtains predictions from a fitted spmle object.
 }
 \details{
 \code{predict.spmle} produces predicted values, obtained by evaluating the
-spmle function in the frame newdata (which defaults to \code{model.frame(object)}).
+\code{spmle} function in the frame newdata (which defaults to \code{model.frame(object)}).
 If the logical \code{se.fit} is \code{TRUE}, standard errors of the predictions
 are calculated (only in the link scale). Setting \code{interval="confidence"} specifies computation of
 confidence intervals at the specified level.
-
-If newdata is omitted the predictions are based on the data used for the fit.
-In that case how cases with missing values in the original fit is determined
-by the na.action argument of that fit. If na.action = na.omit omitted cases
-will not appear in the residuals, whereas if na.action = na.exclude they will
-appear (in predictions and standard errors), with residual value NA. See also napredict.
 }

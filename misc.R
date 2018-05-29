@@ -1843,5 +1843,9 @@ spmle(D=D, G=G, E=E, pi1=0, data=dat2)
 spmleCombo(D=D, G=G, E=E, pi1=0, data=dat2, nboot=50, ncores=2)
 spmleCombo(D=D, G=G, E=E, pi1=0.03, data=dat2, nboot=100, ncores=2)
 
+########################################################################################
+pack <- "caseControlGE"
+path <- find.package(pack)
+system(paste(shQuote(file.path(R.home("bin"), "R")), "CMD", "Rd2pdf", shQuote(path)))
 
 

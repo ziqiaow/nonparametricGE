@@ -139,15 +139,22 @@ anova.spmle = function(object, ...) {
     return(anova.spmle(null_model, object))
   }
 
+  ## Collect all models specified as arguments
   objects = list(object, ...)
   nmodels = length(objects)
   ns = sapply(objects, nobs)
   if(any(ns != ns[1])) {stop("models were not all fitted to the same size of dataset")}
 
+  ## Form ANOVA table
   rval = matrix(rep(NA, 5 * nmodels), ncol = 5)
   colnames(rval) = c("#Df", "LogLik", "Df", "Chisq", "Pr(>Chisq)")
   rownames(rval) = 1:nmodels
   logL = lapply(objects, logLik)
+
+  ## Check that all are spmle models with loglikelihood
+  if(!all(sapply(objects, inherits, "spmle"))) {stop("only models fit using spmle() may be compared")}
+  if(any(sapply(logL, is.null))) {stop("models fit with spmleCombo() do not have an associated likelihood to be compared")}
+
   rval[, 1] = as.numeric(sapply(logL, function(x) attr(x, "df")))
   rval[, 2] = sapply(logL, as.numeric)
   rval[2:nmodels, 3] = rval[2:nmodels, 1] - rval[1:(nmodels - 1), 1]
@@ -210,32 +217,25 @@ model.matrix.spmle = function(object, ...){
 
 #' Predict method for spmle objects
 #'
-#' Obtains predictions and optionally estimates standard errors of those predictions from a fitted spmle object.
+#' Obtains predictions from a fitted spmle object.
 #'
 #' \code{predict.spmle} produces predicted values, obtained by evaluating the
-#' spmle function in the frame newdata (which defaults to \code{model.frame(object)}).
+#' \code{spmle} function in the frame newdata (which defaults to \code{model.frame(object)}).
 #' If the logical \code{se.fit} is \code{TRUE}, standard errors of the predictions
 #' are calculated (only in the link scale). Setting \code{interval="confidence"} specifies computation of
 #' confidence intervals at the specified level.
 #'
-#' If newdata is omitted the predictions are based on the data used for the fit.
-#' In that case how cases with missing values in the original fit is determined
-#' by the na.action argument of that fit. If na.action = na.omit omitted cases
-#' will not appear in the residuals, whereas if na.action = na.exclude they will
-#' appear (in predictions and standard errors), with residual value NA. See also napredict.
-#'
 #' @param object of class inheriting from "spmle"
-#' @param newdata An optional list or data frame in which to look for variables
-#'   with which to predict. If omitted, the fitted values are used.
-#' @param se.fit A switch indicating if standard errors are required.
+#' @param newdata an optional list or data frame in which to look for variables
+#'   to use when making predictions. If omitted, the fitted values are used.
+#' @param se.fit a switch indicating if standard errors are required.
 #' @param interval Type of interval calculation. Can be abbreviated. Prediction
 #'   intervals are not meaningful for binary responses and are not allowed.
-#' @param level Confidence level.
-#' @param type the type of prediction required. The default is on the scale of
-#'   the linear predictors; the alternative "response" is on the scale of the
-#'   response variable. Thus for a default binomial model the default
-#'   predictions are of log-odds (probabilities on logit scale) and
-#'   type = "response" gives the predicted probabilities.
+#' @param level confidence level.
+#' @param type the type of prediction required. The default is \code{"link"} which
+#'   uses the logit scale of the linear predictors, giving the log odds.
+#'   The alternative \code{"response"} uses the probability scale, giving
+#'   \code{Pr(D=1|G,E)}.
 #' @param na.action function determining what should be done with missing values
 #'   in newdata. The default is to predict NA.
 #' @param ... further arguments passed to or from other methods.
@@ -246,8 +246,8 @@ model.matrix.spmle = function(object, ...){
 #'   If \code{se.fit} is \code{TRUE}, a list with the following components is returned:
 #'   \describe{
 #'     \item{\code{fit}}{vector or matrix as above}
-#'     \item{\code{se.fit}}{standard error of predicted means, in the link scale}
-#'     \item{\code{residual.scale}}{residual standard deviations}
+#'     \item{\code{se.fit}}{vector with standard error of predicted means, in the link scale}
+#'     \item{\code{residual.scale}}{residual standard deviation}
 #'     \item{\code{df}}{degrees of freedom for residual}
 #'   }
 #' @export

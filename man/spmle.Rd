@@ -16,9 +16,9 @@ spmle(D, G, E, pi1, data, control = list(), swap = FALSE, startvals)
 \item{pi1}{the population disease rate, a scalar in [0, 1) or the string "rare".
 Using \code{pi1=0} is the rare disease approximation.}
 
-\item{data}{an optional list, environment, or object coercible to a data frame by
-\code{\link[base]{as.data.frame}} containing the variables in the model.  If not found
-in data, the variables are taken from the environment from which \code{spmleCombo} is called.}
+\item{data}{an optional list or environment containing the variables in the model.
+If not found in \code{data}, the variables are taken from the environment
+from which \code{spmle} is called.}
 
 \item{control}{a list of control parameters that allow the user to control the optimization algorithm.  See 'Details'.}
 
@@ -31,29 +31,31 @@ in which case logistic regression estimates are used as starting values.}
 }
 \value{
 an object of class \code{"spmle"}.  The function \code{summary} (i.e., \code{summary.spmle})
-  can be used to obtain or print a summary of the results and the function \code{anova}
-  (i.e., anova.spmle) to produce an analysis of variance table using likelihood-ratio tests.
-  Note that \code{anova.spmle} may be used to compare one \code{"spmle"} object
-  to another, because the loglikelihood reported by \code{logLik(spmle-obj)} is
-  accurate up to an additive constant; however it should not be used to compare
-  an \code{spmle-object} to a model fit by a different method.
+  can be used to obtain or print a summary of the results.
 
-  \code{\link{predict.spmle}}, the \code{predict} method for S3 class \code{"spmle"}
+  The function \code{anova} (i.e., \code{anova.spmle}) will conduct likelihood-ratio
+  tests comparing one \code{spmle} object to another.  These are valid tests
+  because the loglikelihood reported by \code{logLik.spmle} is accurate up to
+  an additive constant.  However \code{anova} should not be used
+  to compare an \code{spmle} object to a model fit by a different method.
+
+  \code{\link{predict.spmle}}, the \code{predict} method for S3 class \code{"spmle"},
   can predict the expected response (on logistic or probability scales), compute
   confidence intervals for the expected response, and provide standard errors.
 
   The generic accessor functions \code{coefficients}, \code{fitted.values}
-  and \code{residuals} can be used to extract various useful features of the value returned by spmle.
+  and \code{residuals} can be used to extract various useful features of the
+  value returned by \code{spmle}.
 
   An object of class \code{"spmle"} is a list containing at least the following components:
 \describe{
   \item{\code{coefficients}}{a named vector of coefficients}
   \item{\code{pi1}}{the value of pi1 used during the analysis}
   \item{\code{SE}}{standard error estimate of coefficients}
-  \item{\code{cov}}{covariance matrix of coefficients}
+  \item{\code{cov}}{estimated covariance matrix of coefficients}
   \item{\code{glm_fit}}{a logistic regression model fit using the same model as \code{spmle}}
   \item{\code{call}}{the matched call}
-  \item{\code{formula}}{the formula supplied}
+  \item{\code{formula}}{the formula used}
   \item{\code{data}}{the \code{data argument}}
   \item{\code{model}}{the model frame}
   \item{\code{terms}}{the \code{terms} object used}
@@ -63,8 +65,8 @@ an object of class \code{"spmle"}.  The function \code{summary} (i.e., \code{sum
   \item{\code{null.deviance}}{the deviance for the null model.  Deviance = \code{-2*logLik}.}
   \item{\code{df.residual}}{the residual degrees of freedom}
   \item{\code{df.null}}{the residual degrees of freedom for the null model}
-  \item{\code{rank}}{the numeric rank of the fitted linear model (i.e. df_model:
-    the number of parameters estimated)}
+  \item{\code{rank}}{the numeric rank of the fitted linear model
+    (i.e. the number of parameters estimated)}
   \item{\code{nobs}}{number of observations}
   \item{\code{ncase}}{number of cases}
   \item{\code{ncontrol}}{number of controls}
@@ -83,7 +85,7 @@ The marginal distributions of G and E are treated nonparametrically.
 \details{
 This function applies the method of Stalder et. al. (2017) to maximize the
 retrospective pseudolikelihood of case-control data under the assumption of G-E independence.
-It currently supports the model with G and E main effects, and a multiplicative G*E interaction.
+It currently supports the model with G and E main effects and a multiplicative G*E interaction.
 
 The \code{control} argument is a list that controls the behavior of the optimization algorithm
 \code{\link[ucminf]{ucminf}} from the \pkg{ucminf} package.  When \code{ucminf} works,
@@ -93,8 +95,8 @@ To address this, \code{spmle} checks the maximum gradient at "convergence", and 
 using different starting values.  The \code{control} argument can supply any of the following components:
 \describe{
   \item{\code{max_grad_tol}}{maximum allowable gradient at convergence.  \code{spmle} does not
-    consider the optimization to have converged if the maximum gradient \code{> max_grad_tol}.
-    Default \code{max_grad_tol = 0.001}.}
+    consider the optimization to have converged if the maximum gradient \code{> max_grad_tol}
+    when \code{ucminf} stops. Default \code{max_grad_tol} \code{= 0.001}.}
   \item{\code{num_retries}}{number of times to retry optimization.  An error is produced if
     the optimization has not converged after \code{num_retries}.  Different starting values
     are used for each retry.  Default \code{num_retries = 2}.}
@@ -105,7 +107,7 @@ using different starting values.  The \code{control} argument can supply any of 
     but if you notice that \code{ucminf} never converges during the first attempt, try setting \code{use_hess = FALSE}.}
   \item{\code{trace}}{a scalar or logical value that is used by both \code{spmle} and \code{ucminf}
     to control the printing of detailed tracing information.
-    If TRUE or >0, details of each \code{ucminf} iteration are printed.
+    If TRUE or > 0, details of each \code{ucminf} iteration are printed.
     If FALSE or 0, \code{ucminf} iteration details are suppressed but \code{spmle} still
     prints optimization retries.  If \code{trace < 0} nothing is printed.  Default \code{trace = 0}.}
   \item{additional control parameters}{not used by \code{spmle}, but are passed to \code{\link[ucminf]{ucminf}}.

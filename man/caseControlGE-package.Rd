@@ -15,7 +15,7 @@ variables.
 }
 \details{
 Both methods treat the genetic and environmental variables nonparametrically,
-facilitating the analysis of polygenic analysis for which distributional assumptions
+facilitating the analysis of polygenic risk factors for which distributional assumptions
 are difficult to justify.
 }
 \section{Keywords}{
@@ -40,12 +40,12 @@ semiparametric analysis; pseudolikelihood; polygenic analysis
     smaller mean squared error than \code{spmle}, at the cost of increased
     computation to calculate the bootstrap standard error.}
   \item{\code{\link{simulateCC}}}{simulates case-control data with a wide range
-    of possible genetic and environmental variables}
+    of possible genetic and environmental variables.}
   \item{methods for class \code{"spmle"}}{both \code{spmleCombo} and \code{spmle}
     return objects of class \code{"spmle"}.  A range of S3 methods are provided:
-    \code{anova.spmle, confint.spmle, logLik.spmle, model.matrix.spmle,
-    plot.spmle, \link{predict.spmle}, print.spmle, print.summary.spmle,
-    summary.spmle, vcov.spmle}.}
+    \code{anova.spmle}, \code{confint.spmle}, \code{logLik.spmle},
+    \code{model.matrix.spmle}, \code{plot.spmle}, \code{\link{predict.spmle}},
+    \code{print.spmle}, \code{print.summary.spmle}, \code{summary.spmle}, \code{vcov.spmle}}.
 }
 }
 

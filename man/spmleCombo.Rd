@@ -17,18 +17,18 @@ spmleCombo(D, G, E, pi1, data, nboot = 50, ncores = 1, control = list(),
 \item{pi1}{the population disease rate, a scalar in [0, 1) or the string "rare".
 Using \code{pi1=0} is the rare disease approximation.}
 
-\item{data}{an optional list, environment, or object coercible to a data frame by
-\code{\link[base]{as.data.frame}} containing the variables in the model.  If not found
-in data, the variables are taken from the environment from which \code{spmleCombo} is called.}
+\item{data}{an optional list or environment containing the variables in the model.
+If not found in \code{data}, the variables are taken from the environment
+from which \code{spmleCombo} is called.}
 
-\item{nboot}{an integer: the number of bootstraps to use when estimating the SE of the
-Symmetric Combination Estimator.  Setting \code{nboot=0} disables the bootstrap
-and uses the asymptotic standard error estimate (not recommended because asymptotic
-estimates of the SE can provide poor coverage - setting \code{nboot=0} will
-trigger a warning).  Default \code{50}.}
+\item{nboot}{the number of bootstraps to use when estimating the
+standard error, an integer.  Setting \code{nboot=0} disables the bootstrap
+and uses the asymptotic standard error estimate (not recommended because the
+asymptotic SE often has poor coverage: setting \code{nboot=0} will
+trigger a warning).  Default \code{nboot = 50}.}
 
-\item{ncores}{an integer: the number of cpu cores to use when parallelizing bootstraps.
-Default \code{1} executes bootstrap sequentially.}
+\item{ncores}{the number of cpu cores to use when parallelizing bootstraps, an integer.
+Default \code{ncores = 1} executes the bootstrap sequentially.}
 
 \item{control}{a list of control parameters that allow the user to control the optimization algorithm.  See 'Details'.}
 
@@ -43,22 +43,23 @@ an object of class \code{"spmle"}.  The function \code{summary} (i.e., \code{sum
   and the function \code{anova.spmle} cannot be used to compare models fit using
   \code{spmleCombo}.
 
-  \code{\link{predict.spmle}}, the \code{predict} method for S3 class \code{"spmle"}
+  \code{\link{predict.spmle}}, the \code{predict} method for S3 class \code{"spmle"},
   can predict the expected response (on logistic or probability scales), compute
   confidence intervals for the expected response, and provide standard errors.
 
   The generic accessor functions \code{coefficients}, \code{fitted.values}
-  and \code{residuals} can be used to extract various useful features of the value returned by spmle.
+  and \code{residuals} can be used to extract various useful features of the
+  value returned by \code{spmleCombo}.
 
   An object of class \code{"spmle"} is a list containing at least the following components:
 \describe{
   \item{\code{coefficients}}{a named vector of coefficients}
   \item{\code{pi1}}{the value of pi1 used during the analysis}
   \item{\code{SE}}{standard error estimate of coefficients}
-  \item{\code{cov}}{covariance matrix of coefficients}
+  \item{\code{cov}}{estimated covariance matrix of coefficients}
   \item{\code{glm_fit}}{a logistic regression model fit using the same model as \code{spmleCombo}}
   \item{\code{call}}{the matched call}
-  \item{\code{formula}}{the formula supplied}
+  \item{\code{formula}}{the formula used}
   \item{\code{data}}{the \code{data argument}}
   \item{\code{model}}{the model frame}
   \item{\code{terms}}{the \code{terms} object used}
@@ -68,8 +69,8 @@ an object of class \code{"spmle"}.  The function \code{summary} (i.e., \code{sum
   \item{\code{null.deviance}}{the deviance for the null model}
   \item{\code{df.residual}}{the residual degrees of freedom}
   \item{\code{df.null}}{the residual degrees of freedom for the null model}
-  \item{\code{rank}}{the numeric rank of the fitted linear model (i.e. df_model:
-    the number of parameters estimated)}
+  \item{\code{rank}}{the numeric rank of the fitted linear model
+    (i.e. the number of parameters estimated)}
   \item{\code{nobs}}{number of observations}
   \item{\code{ncase}}{number of cases}
   \item{\code{ncontrol}}{number of controls}
@@ -83,16 +84,17 @@ and \code{bootstraps} (matrix of bootstrapped parameter estimates, if \code{nboo
 \description{
 \code{spmleCombo} estimates Gene-Environment interactions in case-control data under the assumption
 of G-E independence in the underlying population.  This is an improved version of
-\code{\link{spmle}} that improves estimation accuracy at the cost of
-computing time.
+\code{\link{spmle}} that, on average, has significantly smaller mean squared error
+than \code{spmle}, at the cost of increased computing time.
 }
 \details{
-This function calculates the Symmetric Combination Estimator of Wang et. al. (2018) to combine two symmetric
-retrospective pseudolikelihood estimators of case-control data under the assumption of G-E independence.
-The marginal distributions of G and E are treated nonparametrically.  This is done by
-calling \code{spmle} twice (once with \code{swap=TRUE}) to generate two symmetric
-estimates, which are then combined using a GLS approach.
-It currently supports the model with G and E main effects, and a multiplicative G*E interaction.
+This function calculates the Symmetric Combination Estimator of Wang et. al. (2018),
+which improves estimation efficiency in case-control studies of gene-environment
+interactions while treating the marginal distributions of G and E nonparametrically.
+
+This is done by calling \code{spmle} twice (once with \code{swap=TRUE}) to generate
+two symmetric estimates, which are then combined using a GLS approach.
+It currently supports the model with G and E main effects and a multiplicative G*E interaction.
 
 The \code{control} argument is a list that controls the behavior of the optimization algorithm
 \code{\link[ucminf]{ucminf}} from the \pkg{ucminf} package.  When \code{ucminf} works,
@@ -102,8 +104,8 @@ To address this, \code{spmleCombo} checks the maximum gradient at "convergence",
 using different starting values.  The \code{control} argument can supply any of the following components:
 \describe{
   \item{\code{max_grad_tol}}{maximum allowable gradient at convergence.  \code{spmleCombo} does not
-    consider the optimization to have converged if the maximum gradient \code{> max_grad_tol}.
-    Default \code{max_grad_tol = 0.001}.}
+    consider the optimization to have converged if the maximum gradient \code{> max_grad_tol}
+    when \code{ucminf} stops. Default \code{max_grad_tol} \code{= 0.001}.}
   \item{\code{num_retries}}{number of times to retry optimization.  An error is produced if
     the optimization has not converged after \code{num_retries}.  Different starting values
     are used for each retry.  Default \code{num_retries = 2}.}
@@ -114,7 +116,7 @@ using different starting values.  The \code{control} argument can supply any of 
     but if you notice that \code{ucminf} never converges during the first attempt, try setting \code{use_hess = FALSE}.}
   \item{\code{trace}}{a scalar or logical value that is used by both \code{spmleCombo} and \code{ucminf}
     to control the printing of detailed tracing information.
-    If TRUE or >0, details of each \code{ucminf} iteration are printed.
+    If TRUE or > 0, details of each \code{ucminf} iteration are printed.
     If FALSE or 0, \code{ucminf} iteration details are suppressed but \code{spmleCombo} still
     prints optimization retries.  If \code{trace < 0} nothing is printed.  Default \code{trace = 0}.}
   \item{additional control parameters}{not used by \code{spmleCombo}, but are passed to \code{\link[ucminf]{ucminf}}.
