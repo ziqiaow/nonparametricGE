@@ -25,30 +25,30 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
   ## Convert G, and E to matrices (if not already)
   G = as.matrix(G)
   E = as.matrix(E)
-
+  
   ## Set control parameters for SPMLE estimation
   con = list(trace=0, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
-
+  
   ## Set control parameters for ucminf using values from con where appropriate
   ucminf_con = con[names(con) %in% c("trace", "grtol", "xtol", "stepmax", "maxeval", "grad", "gradstep", "invhessian.lt")]
-
+  
   ## Optimize with ucminf
   spmle_max = ucminf::ucminf(par=Omega_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
-
+  
   ## Save the retry number and starting values
   spmle_max$start_vals = Omega_start
   spmle_max$retry = 0
-
+  
   ## Check for convergance and rerun optimization if necessary
   if(spmle_max$convergence<1 || !is.finite(spmle_max$info[1]) || spmle_max$info[1]>con$max_grad_tol) {
     ## Scale starting values by 1/SD
     scale_vec = 1/c(1, apply(model.matrix(~0+G*E), 2, sd))
-
+    
     ## Loop through different starting values
     for(j in seq_len(con$num_retries)) {
       if(con$trace>-1) {cat("ucminf retry", j, "of", con$num_retries, "\n")}
-
+      
       ## If failure happened when preconditioning with the hessian, try without (same start values the first time)
       if(!is.null(ucminf_con$invhessian.lt)) {
         ucminf_con$invhessian.lt = NULL
@@ -56,18 +56,18 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
       } else {  # otherwise use scaled normal startvals (preserve names from Omega_start)
         new_start = setNames(rnorm(n=length(Omega_start), sd=scale_vec), names(Omega_start))
       }
-
+      
       ## Rerun optimization with new values
       spmle_max = ucminf::ucminf(par=new_start, fn=lik_fn, gr=grad_fn, control=ucminf_con, D=D, G=G, E=E, pi1=pi1)
-
+      
       ## Save the retry number and starting values
       spmle_max$start_vals = new_start
       spmle_max$retry = j
-
+      
       ## Break out of the loop once we have convergence
       if(is.finite(spmle_max$info[1]) & spmle_max$info[1]<con$max_grad_tol) {break}
     }
-
+    
     ## Test again: if still no convergance, throw an error
     if(!is.finite(spmle_max$info[1]) | spmle_max$info[1]>con$max_grad_tol) {stop("ucminf failed to converge. Try increasing control$num_retries or rescaling G and E.")}
   }
@@ -212,21 +212,21 @@ maximize_spmle = function(Omega_start, D, G, E, pi1, control=list()) {
 spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   ## Store the function call
   cl = match.call()
-
+  
   ## Get argument names for D, G, and E
   Dname = substitute(D)
   Gname = substitute(G)
   Ename = substitute(E)
-
+  
   ## If pi1 (partially) matches "rare", set pi1=0
   if(pmatch(x=substr(x=tolower(pi1), start=1, stop=4), table="rare", nomatch=FALSE)) {pi1=0}
   stopifnot(pi1>=0, pi1<1)  # throw an error if pi1 not in [0,1)
-
+  
   ## Store the formula with user-provided variable names.  For consistency with estimators that accept formulas (like lm),
   ## set the formula environment to the calling environment (as if formula had been an argument).
   formula = formula(paste(as.character(as.expression(Dname)), "~", as.character(as.expression(Gname)), "*", as.character(as.expression(Ename))))
   attr(formula, ".Environment") = parent.frame()
-
+  
   ## If no data.frame was supplied, set data to the calling environment
   if(missing(data)) {
     data = environment(formula)
@@ -236,48 +236,48 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
     G = with(data=data, eval(Gname))
     E = with(data=data, eval(Ename))
   }
-
+  
   ## Expand factor variables into dummies, if present
   if(class(G)=="factor") {G=model.matrix(~G)[,-1]}
   if(class(E)=="factor") {E=model.matrix(~E)[,-1]}
-
+  
   ## Create model.frame (response, no interactions) and model.matrix (all predictors, including interactions)
   model_frame = model.frame(formula=formula, data=data)
   model_matrix = model.matrix(formula, model_frame)
-
+  
   ## Fit the model with logistic regression
   logistic_fit = glm(formula, family=binomial(link='logit'), data=data)
-
+  
   ## If starting values weren't provided, use logistic regression estimates
   if(missing(startvals)) {
     Omega_start = coef(logistic_fit)
   } else {
     Omega_start = startvals
   }
-
+  
   ## If user-provided startval lacked names, add them
   if(is.null(names(Omega_start))) {names(Omega_start) = colnames(model_matrix)}
-
+  
   ## Set control parameters
   con = list(trace=0, use_hess=TRUE, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
-
+  
   ## Remove missing values and convert G and E to matrices
   complete = complete.cases(D, G, E)
   D = D[complete]
   G = as.matrix(as.matrix(G)[complete,])
   E = as.matrix(as.matrix(E)[complete,])
-
+  
   ## Sizes of arrays
   n = length(D)
   ncase = sum(D)
   ncontrol = n - ncase
   G = as.matrix(G)
   E = as.matrix(E)
-
+  
   ## Model degrees of freedom
   df_model = length(Omega_start)
-
+  
   ## If we're swapping G & E, make the change now
   if(swap==TRUE) {
     nG = NCOL(G)
@@ -290,24 +290,24 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   } else {
     swap_order = reverse_swap_order = seq_along(Omega_start)
   }
-
+  
   ## Precondition with hessian if requested
   if(con$use_hess==TRUE) {con$invhessian.lt = solve(neghess(Omega=Omega_start, D=D, G=G, E=E, pi1=pi1))[lower.tri(diag(df_model),diag=TRUE)]}
-
+  
   ## Calculate SPMLE for a given disease rate
   spmle_max = maximize_spmle(Omega_start=Omega_start[swap_order], D=D, G=G, E=E, pi1=pi1, control=con)
-
+  
   ## Asymptotic SE for known disease rate
   hess_zeta = hesszeta(Omega=spmle_max$par, D=D, G=G, E=E, pi1=pi1)
   Sigma = ((ncontrol-1)*cov(hess_zeta$zeta0) + (ncase-1)*cov(hess_zeta$zeta1))/n  # (ncontrol-1) to correct denominator because cov uses the "sample covariance matrix" denominator of n-1
   H_inv = -n*solve(hess_zeta$hessian)    # = (-hessian/n)^-1 = (Gamma_1 - Gamma_2)^-1
   Lambda = H_inv %*% Sigma %*% t(H_inv) / n  # covar matrix of sqrt(n) * OmegaHat
   SE_asy = sqrt(diag(Lambda))
-
+  
   ## Calculate predictions
   linear_predictors = model_matrix %*% spmle_max$par  # logistic scale
   fitted_values = plogis(q=linear_predictors)         # probability scale
-
+  
   ## Loglikelihood, AIC, and BIC
   loglik = -spmle_max$value
   attr(loglik, "nobs") = n
@@ -315,14 +315,14 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
   class(loglik) = "logLik"
   AIC = 2*df_model - 2*loglik
   BIC = log(n) * df_model - 2*loglik
-
+  
   ## Pearson residuals, total deviance, and df resid & null
   pearson_resid = (D-fitted_values) / sqrt(fitted_values*(1-fitted_values))
   total_deviance = -2*loglik
   df_resid = n - df_model
   null_deviance = sum(-2*log(abs(1-D-mean(D))))
   df_null = n - 1
-
+  
   ## Compile results into a list.  Use glm-object naming conventions.  If we swapped G & E, change back now
   spmle_est = list(coefficients      = spmle_max$par[reverse_swap_order],
                    pi1               = pi1,
@@ -353,7 +353,7 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
                    nobs              = n,
                    ncase             = ncase,
                    ncontrol          = ncontrol)
-
+  
   ## Return an object of class spmle
   class(spmle_est) = c("spmle")
   return(spmle_est)
@@ -493,24 +493,24 @@ spmle = function(D, G, E, pi1, data, control=list(), swap=FALSE, startvals){
 #' @export
 spmleCombo = function(D, G, E, pi1, data, nboot=50, ncores=1, control=list(), startvals){
   if(nboot==0) {warning("nboot=0, using asymptotic standard error estimate, which has poor coverage properties")}
-
+  
   ## Store the function call
   cl = match.call()
-
+  
   ## Get argument names for D, G, and E
   Dname = substitute(D)
   Gname = substitute(G)
   Ename = substitute(E)
-
+  
   ## If pi1 (partially) matches "rare", set pi1=0
   if(pmatch(x=substr(x=tolower(pi1), start=1, stop=4), table="rare", nomatch=FALSE)) {pi1=0}
   stopifnot(pi1>=0, pi1<1)  # throw an error if pi1 not in [0,1)
-
+  
   ## Store the formula with user-provided variable names.  For consistency with estimators that accept formulas (like lm),
   ## set the formula environment to the calling environment (as if formula had been an argument).
   formula = formula(paste(as.character(as.expression(Dname)), "~", as.character(as.expression(Gname)), "*", as.character(as.expression(Ename))))
   attr(formula, ".Environment") = parent.frame()
-
+  
   ## If no data.frame was supplied, set data to the calling environment
   if(missing(data)) {
     data = environment(formula)
@@ -520,91 +520,91 @@ spmleCombo = function(D, G, E, pi1, data, nboot=50, ncores=1, control=list(), st
     G = with(data=data, eval(Gname))
     E = with(data=data, eval(Ename))
   }
-
+  
   ## Expand factor variables into dummies, if present
-  if(class(G)=="factor") {G=model.matrix(~G)[,-1]}
-  if(class(E)=="factor") {E=model.matrix(~E)[,-1]}
-
+ # if(class(G)=="factor") {G=model.matrix(~G)[,-1]}
+ # if(class(E)=="factor") {E=model.matrix(~E)[,-1]}
+  
   ## Create model.frame (response, no interactions) and model.matrix (all predictors, including interactions)
   model_frame = model.frame(formula=formula, data=data)
   model_matrix = model.matrix(formula, model_frame)
-
+  
   ## Fit the model with logistic regression
   logistic_fit = glm(formula, family=binomial(link='logit'), data=data)
-
+  
   ## If starting values weren't provided, use logistic regression estimates
   if(missing(startvals)) {
     Omega_start = coef(logistic_fit)
   } else {
     Omega_start = startvals
   }
-
+  
   ## If user-provided startval lacked names, add them
   if(is.null(names(Omega_start))) {names(Omega_start) = colnames(model_matrix)}
-
+  
   ## Set control parameters
   con = list(trace=0, use_hess=TRUE, max_grad_tol=0.001, num_retries=2)
   con[(names(control))] = control
-
+  
   ## Remove missing values and convert G and E to matrices
   complete = complete.cases(D, G, E)
   D = D[complete]
   G = as.matrix(as.matrix(G)[complete,])
   E = as.matrix(as.matrix(E)[complete,])
-
+  
   ## Sizes of arrays
   n = length(D)
   ncase = sum(D)
   ncontrol = n - ncase
   G = as.matrix(G)
   E = as.matrix(E)
-
+  
   ## Model degrees of freedom
   df_model = length(Omega_start)
-
+  
   ##### Treat G & E as in Stalder et al. 2017
   spmle_E = spmle(D=D, G=G, E=E, pi1=pi1, data=data, control=con, swap=FALSE, startvals=Omega_start)
   ##### Swap G & E
   spmle_G = spmle(D=D, G=G, E=E, pi1=pi1, data=data, control=con, swap=TRUE, startvals=Omega_start)
-
+  
   ## Define matrices
   Omega_all = c(spmle_E$coefficients, spmle_G$coefficients)
   X_mat = rbind(diag(df_model), diag(df_model))
   zero_mat = matrix(0, nrow=df_model, ncol=df_model)
-
+  
   ## Block diagonal with both inverse hessians
   H_all = -rbind(cbind(spmle_E$H_inv,zero_mat), cbind(zero_mat,spmle_G$H_inv))
-
+  
   ## Sigma block matrix
   Sigma_EE  = spmle_E$Sigma
   Sigma_GG  = spmle_G$Sigma
   Sigma_EG  = ((ncontrol-1)*cov(spmle_E$zeta0, spmle_G$zeta0) + (ncase-1)*cov(spmle_E$zeta1, spmle_G$zeta1))/n
   Sigma_GE  = t(Sigma_EG)
   Sigma_all = rbind(cbind(Sigma_EE,Sigma_EG),cbind(Sigma_GE,Sigma_GG))
-
+  
   ## Lambda (asymptotic covariance) matrix
   Lambda_all = H_all %*% Sigma_all %*% t(H_all)
   Lambda_all_inv = solve(Lambda_all)
-
+  
   ## Asymptotic covariance matrix of optimum combination
   Lambda_combo = solve(t(X_mat) %*% Lambda_all_inv %*% X_mat)
   combo_asy_SE = sqrt(diag(Lambda_combo)/n)
   names(combo_asy_SE) = names(Omega_start)
-
+  
   ## Optimum combination
   combo_par = as.vector(Lambda_combo %*% t(X_mat) %*% Lambda_all_inv %*% Omega_all)
   names(combo_par) = names(Omega_start)
-
+  
   ## Calculate predictions
   linear_predictors = model_matrix %*% combo_par      # logistic scale
   fitted_values = plogis(q=linear_predictors)         # probability scale
-
+  
   ## Pearson residuals, total deviance, and df resid & null
   pearson_resid = (D-fitted_values) / sqrt(fitted_values*(1-fitted_values))
   df_resid = n - df_model
   null_deviance = sum(-2*log(abs(1-D-mean(D))))
   df_null = n - 1
-
+  
   ## Compile asymptotic results into a list.  Use glm-object naming conventions.
   combo_est = list(coefficients      = combo_par,
                    pi1               = pi1,
@@ -628,34 +628,34 @@ spmleCombo = function(D, G, E, pi1, data, nboot=50, ncores=1, control=list(), st
                    nobs              = n,
                    ncase             = ncase,
                    ncontrol          = ncontrol)
-
+  
   ## Set class spmle_combo
   class(combo_est) = c("spmle")
-
+  
   ## Calculate bootstrap SE if nboot > 0
   if(nboot > 0) {
     if(con$trace > 0) {cat("Begin bootstrap\n")}
-
+    
     ## Split the data into controls & cases for balanced resampling (same # of controls & cases in bootstraps as in original data)
     dat_control = list(D=D[D==0], G=G[D==0,], E=E[D==0,])
     dat_case = list(D=D[D==1], G=G[D==1,], E=E[D==1,])
-
+    
     ## Within cases & controls, we use a balanced bootstrap: good asymptotic properties, easy to parallelize
     ## First create long lists of indices.  To create bootstrapped samples, read off this list of indices
     index_control = sample(rep(1:ncontrol, nboot))
     index_case = sample(rep(1:ncase, nboot))
-
+    
     ## Parallelize bootstrap is ncores > 1
     if(ncores > 1) {
       ## Keep the user from specifying too many cores
       ncores = min(ncores, parallel::detectCores(logical=FALSE))
-
+      
       ## Non-Windows operating systems can use mclapply with forking (faster)
       if(Sys.info()[1]!="Windows"){
         boot_ests = do.call(rbind, parallel::mclapply(X=seq_len(nboot), FUN=combo_boot, mc.cores=ncores,
-                                            index_control=index_control, index_case=index_case,
-                                            dat_control=dat_control, dat_case=dat_case, pi1=pi1,
-                                            ncontrol=ncontrol, ncase=ncase, con=con))
+                                                      index_control=index_control, index_case=index_case,
+                                                      dat_control=dat_control, dat_case=dat_case, pi1=pi1,
+                                                      ncontrol=ncontrol, ncase=ncase, con=con))
       } else {  # windows uses PSOCK clusters
         cl = parallel::makeCluster(ncores)
         boot_ests = t(parallel::parSapply(cl=cl, X=seq_len(nboot), FUN=combo_boot,
@@ -670,17 +670,17 @@ spmleCombo = function(D, G, E, pi1, data, nboot=50, ncores=1, control=list(), st
                            dat_control=dat_control, dat_case=dat_case, pi1=pi1,
                            ncontrol=ncontrol, ncase=ncase, con=con))
     }  # end parallel bootstrap if()
-
+    
     ## Calculate bootstrap covariance matrix and SE
     boot_cov = cov(boot_ests)
     boot_SE = sqrt(diag(boot_cov))
-
+    
     ## Replace asymptotic covariance estimate with bootstrap
     combo_est$SE         = boot_SE
     combo_est$cov        = boot_cov
     combo_est$bootstraps = boot_ests
   }  # end bootstrap if()
-
+  
   ## Return fitted model
   return(combo_est)
 }
@@ -689,44 +689,43 @@ spmleCombo = function(D, G, E, pi1, data, nboot=50, ncores=1, control=list(), st
 ## Internal bootstrap function - can be called in parallel
 combo_boot = function(b, index_control, index_case, dat_control, dat_case, pi1, ncontrol, ncase, con) {
   if(con$trace>0) {cat("Bootstrap", b, "\n")}
-
+  
   ## Create bootstraped data set
   D_boot = c(rep(0,ncontrol),rep(1,ncase))
   G_boot = rbind(as.matrix(as.matrix(dat_control$G)[index_control[((b-1)*ncontrol+1):(b*ncontrol)],]), as.matrix(as.matrix(dat_case$G)[index_case[((b-1)*ncase+1):(b*ncase)],]))
   E_boot = rbind(as.matrix(as.matrix(dat_control$E)[index_control[((b-1)*ncontrol+1):(b*ncontrol)],]), as.matrix(as.matrix(dat_case$E)[index_case[((b-1)*ncase+1):(b*ncase)],]))
-
+  
   ## Calculate both normal & swapped SPMLE with asymptotic SE
   spmle_E = spmle(D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=FALSE, control=con)
   spmle_G = spmle(D=D_boot, G=G_boot, E=E_boot, pi1=pi1, swap=TRUE, control=con)
-
+  
   ## Define matrices
   n = ncase + ncontrol
   df_model = length(spmle_E$coefficients)
   Omega_all = c(spmle_E$coefficients, spmle_G$coefficients)
   X_mat = rbind(diag(df_model), diag(df_model))
   zero_mat = matrix(0, nrow=df_model, ncol=df_model)
-
+  
   ## Block diagonal with both inverse hessians
   H_all = -rbind(cbind(spmle_E$H_inv,zero_mat), cbind(zero_mat,spmle_G$H_inv))
-
+  
   ## Sigma block matrix
   Sigma_EE  = spmle_E$Sigma
   Sigma_GG  = spmle_G$Sigma
   Sigma_EG  = ((ncontrol-1)*cov(spmle_E$zeta0, spmle_G$zeta0) + (ncase-1)*cov(spmle_E$zeta1, spmle_G$zeta1))/n
   Sigma_GE  = t(Sigma_EG)
   Sigma_all = rbind(cbind(Sigma_EE,Sigma_EG),cbind(Sigma_GE,Sigma_GG))
-
+  
   ## Lambda (asymptotic covariance) matrix
   Lambda_all = H_all %*% Sigma_all %*% t(H_all)
   Lambda_all_inv = solve(Lambda_all)
-
+  
   ## Asymptotic covariance matrix of optimum combination
   Lambda_combo = solve(t(X_mat) %*% Lambda_all_inv %*% X_mat)
-
+  
   ## Optimum combination
   combo_par = as.vector(Lambda_combo %*% t(X_mat) %*% Lambda_all_inv %*% Omega_all)
-
+  
   return(combo_par)
 }
-
 
